@@ -9,12 +9,3 @@ class ISummarizerWorker(ABC):
             Any result or status from processing the event.
         """
         pass
-    
-    @abstractmethod
-    def store_summary(self, summary):
-        """
-        Store the generated summary in the appropriate location (e.g., database, file, etc.).
-        Args:
-            summary: The summary data to store.
-        """
-        pass

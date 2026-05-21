@@ -13,7 +13,9 @@ class NBASummarizer(ISummarizerInterface):
         # Get all hit rates by keys
         hit_rates = self.nba_hit_rates_repository.get_hit_rates_by_keys(event_id, market_key, outcome_description)
 
-        summaries = self.build_summary(hit_rates)
+        summary = self.build_summary(hit_rates, event_id, market_key, outcome_description)
+
+        return summary
 
     def build_summary(self, hit_rates, event_id, market_key, outcome_description):
         summary = {}

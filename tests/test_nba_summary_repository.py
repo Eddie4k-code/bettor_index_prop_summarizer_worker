@@ -16,7 +16,7 @@ def session():
 def repo(session):
     return NBASummaryRepository(session)
 
-def make_summary(event_id="evt1", market_key="points", outcome_description="over"):
+def make_summary(event_id="evt1", market_key="points", outcome_description="over", sport_key="basketball_nba"):
     return NBASummary(
         event_id=event_id,
         market_key=market_key,
@@ -24,7 +24,8 @@ def make_summary(event_id="evt1", market_key="points", outcome_description="over
         commence_time=datetime.datetime.utcnow(),
         home_team="A",
         away_team="B",
-        summary_data={"foo": "bar"}
+        summary_data={"foo": "bar"},
+        sport_key=sport_key
     )
 
 def test_insert_summary_inserts_and_commits(repo, session):

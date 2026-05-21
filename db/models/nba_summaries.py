@@ -17,3 +17,4 @@ class NBASummary(Base):
     summary_data = Column(JSON, nullable=False)  # Use Text if not using Postgres
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    sport_key = Column(String, nullable=False, primary_key=True)
