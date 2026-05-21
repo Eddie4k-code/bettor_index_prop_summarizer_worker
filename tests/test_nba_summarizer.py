@@ -3,9 +3,11 @@ from summarizers.nba_summarizer import NBASummarizer
 from unittest.mock import MagicMock
 from datetime import datetime
 
+
 class FakeHitRate:
     def __init__(self, outcome_name, outcome_line, outcome_price, bookmaker, commence_time=None,
-                 ten_game_hit_rate=0, twenty_game_hit_rate=0, thirty_game_hit_rate=0):
+                 ten_game_hit_rate=0, twenty_game_hit_rate=0, thirty_game_hit_rate=0,
+                 home_team="LAL", away_team="BOS", sport_key="nba"):
         self.outcome_name = outcome_name
         self.outcome_line = outcome_line
         self.outcome_price = outcome_price
@@ -14,6 +16,9 @@ class FakeHitRate:
         self.ten_game_hit_rate = ten_game_hit_rate
         self.twenty_game_hit_rate = twenty_game_hit_rate
         self.thirty_game_hit_rate = thirty_game_hit_rate
+        self.home_team = home_team
+        self.away_team = away_team
+        self.sport_key = sport_key
 
 def make_summarizer_with_data(hit_rates):
     repo = MagicMock()
@@ -22,8 +27,8 @@ def make_summarizer_with_data(hit_rates):
 
 def test_build_summary_success(mocker):
     hit_rates = [
-        FakeHitRate("over", 12.5, 105, "FanDuel", ten_game_hit_rate=0.7),
-        FakeHitRate("under", 14.5, -102, "DraftKings", ten_game_hit_rate=0.6),
+        FakeHitRate("over", 12.5, 105, "FanDuel", ten_game_hit_rate=0.7, home_team="NYK", away_team="BKN", sport_key="nba"),
+        FakeHitRate("under", 14.5, -102, "DraftKings", ten_game_hit_rate=0.6, home_team="NYK", away_team="BKN", sport_key="nba"),
     ]
     summarizer = make_summarizer_with_data(hit_rates)
     summary = summarizer.build_summary(hit_rates, 1, "player_points", "Over/Under")
@@ -35,8 +40,8 @@ def test_build_summary_success(mocker):
 
 def test_line_discrepancy_found():
     hit_rates = [
-        FakeHitRate("over", 12.5, 105, "FanDuel"),
-        FakeHitRate("over", 14.5, 110, "DraftKings"),
+        FakeHitRate("over", 12.5, 105, "FanDuel", home_team="NYK", away_team="BKN", sport_key="nba"),
+        FakeHitRate("over", 14.5, 110, "DraftKings", home_team="NYK", away_team="BKN", sport_key="nba"),
     ]
     summarizer = make_summarizer_with_data(hit_rates)
     result = summarizer.find_line_discrepancy(hit_rates)
@@ -46,8 +51,8 @@ def test_line_discrepancy_found():
 
 def test_no_line_discrepancy():
     hit_rates = [
-        FakeHitRate("over", 12.5, 105, "FanDuel"),
-        FakeHitRate("over", 12.5, 110, "DraftKings"),
+        FakeHitRate("over", 12.5, 105, "FanDuel", home_team="NYK", away_team="BKN", sport_key="nba"),
+        FakeHitRate("over", 12.5, 110, "DraftKings", home_team="NYK", away_team="BKN", sport_key="nba"),
     ]
     summarizer = make_summarizer_with_data(hit_rates)
     result = summarizer.find_line_discrepancy(hit_rates)
@@ -55,8 +60,8 @@ def test_no_line_discrepancy():
 
 def test_best_under_line():
     hit_rates = [
-        FakeHitRate("under", 13.5, 100, "FanDuel"),
-        FakeHitRate("under", 14.5, 105, "DraftKings"),
+        FakeHitRate("under", 13.5, 100, "FanDuel", home_team="NYK", away_team="BKN", sport_key="nba"),
+        FakeHitRate("under", 14.5, 105, "DraftKings", home_team="NYK", away_team="BKN", sport_key="nba"),
     ]
     summarizer = make_summarizer_with_data(hit_rates)
     best = summarizer.identify_best_under_line(hit_rates)
@@ -65,8 +70,8 @@ def test_best_under_line():
 
 def test_best_over_line():
     hit_rates = [
-        FakeHitRate("over", 12.5, 100, "FanDuel"),
-        FakeHitRate("over", 11.5, 105, "DraftKings"),
+        FakeHitRate("over", 12.5, 100, "FanDuel", home_team="NYK", away_team="BKN", sport_key="nba"),
+        FakeHitRate("over", 11.5, 105, "DraftKings", home_team="NYK", away_team="BKN", sport_key="nba"),
     ]
     summarizer = make_summarizer_with_data(hit_rates)
     best = summarizer.identify_best_over_line(hit_rates)
@@ -75,8 +80,8 @@ def test_best_over_line():
 
 def test_best_under_price():
     hit_rates = [
-        FakeHitRate("under", 13.5, 100, "FanDuel"),
-        FakeHitRate("under", 13.5, 110, "DraftKings"),
+        FakeHitRate("under", 13.5, 100, "FanDuel", home_team="NYK", away_team="BKN", sport_key="nba"),
+        FakeHitRate("under", 13.5, 110, "DraftKings", home_team="NYK", away_team="BKN", sport_key="nba"),
     ]
     summarizer = make_summarizer_with_data(hit_rates)
     best = summarizer.identify_best_under_price(hit_rates)
@@ -85,8 +90,8 @@ def test_best_under_price():
 
 def test_best_over_price():
     hit_rates = [
-        FakeHitRate("over", 12.5, 100, "FanDuel"),
-        FakeHitRate("over", 12.5, 120, "DraftKings"),
+        FakeHitRate("over", 12.5, 100, "FanDuel", home_team="NYK", away_team="BKN", sport_key="nba"),
+        FakeHitRate("over", 12.5, 120, "DraftKings", home_team="NYK", away_team="BKN", sport_key="nba"),
     ]
     summarizer = make_summarizer_with_data(hit_rates)
     best = summarizer.identify_best_over_price(hit_rates)
@@ -95,8 +100,8 @@ def test_best_over_price():
 
 def test_odds_discrepancy_found():
     hit_rates = [
-        FakeHitRate("over", 12.5, 100, "FanDuel"),
-        FakeHitRate("over", 12.5, 120, "DraftKings"),
+        FakeHitRate("over", 12.5, 100, "FanDuel", home_team="NYK", away_team="BKN", sport_key="nba"),
+        FakeHitRate("over", 12.5, 120, "DraftKings", home_team="NYK", away_team="BKN", sport_key="nba"),
     ]
     summarizer = make_summarizer_with_data(hit_rates)
     result = summarizer.find_odds_discrepancy(hit_rates)
@@ -106,8 +111,8 @@ def test_odds_discrepancy_found():
 
 def test_no_odds_discrepancy():
     hit_rates = [
-        FakeHitRate("over", 12.5, 100, "FanDuel"),
-        FakeHitRate("over", 12.5, 100, "DraftKings"),
+        FakeHitRate("over", 12.5, 100, "FanDuel", home_team="NYK", away_team="BKN", sport_key="nba"),
+        FakeHitRate("over", 12.5, 100, "DraftKings", home_team="NYK", away_team="BKN", sport_key="nba"),
     ]
     summarizer = make_summarizer_with_data(hit_rates)
     result = summarizer.find_odds_discrepancy(hit_rates)

@@ -22,7 +22,10 @@ class NBASummarizer(ISummarizerInterface):
             "market_key": market_key,
             "outcome_description": outcome_description,
             "event_id": event_id,
-            "commence_time": hit_rates[0].commence_time if hit_rates else None
+            "commence_time": hit_rates[0].commence_time if hit_rates else None,
+            "home_team": hit_rates[0].home_team if hit_rates else None,
+            "away_team": hit_rates[0].away_team if hit_rates else None,
+            "sport_key": hit_rates[0].sport_key if hit_rates else None
         }
         summary["best_over_line"] = self.identify_best_over_line(hit_rates)
         summary["best_under_line"] = self.identify_best_under_line(hit_rates)
