@@ -3,6 +3,10 @@ from collections import defaultdict
 from interfaces.summarizer_interface import ISummarizerInterface
 from interfaces.hit_rates_repository_interface import HitRatesRepositoryInterface
 from datetime import datetime
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 class NBASummarizer(ISummarizerInterface):
     def __init__(self,nba_hit_rates_repository: HitRatesRepositoryInterface):
@@ -13,12 +17,18 @@ class NBASummarizer(ISummarizerInterface):
         # Get all hit rates by keys
         hit_rates = self.nba_hit_rates_repository.get_hit_rates_by_keys(event_id, market_key, outcome_description)
 
+        if not hit_rates:
+            logger.info("No hit rates found for event_id: %s, market_key: %s, outcome_description: %s", event_id, market_key, outcome_description)
+            return None
+
         summary = self.build_summary(hit_rates, event_id, market_key, outcome_description)
 
         return summary
 
     def build_summary(self, hit_rates, event_id, market_key, outcome_description):
         summary = {}
+
+        logging.info("Building summary for event_id: %s, market_key: %s, outcome_description: %s with %d hit rates", event_id, market_key, outcome_description, len(hit_rates))
 
         summary["market"] = {
             "market_key": market_key,
@@ -45,7 +55,7 @@ class NBASummarizer(ISummarizerInterface):
         # For both over and under
         result = {}
         for outcome in ["over", "under"]:
-            lines = [(hr.outcome_line, hr.bookmaker) for hr in hit_rates if hr.outcome_name == outcome]
+            lines = [(float(hr.outcome_point), hr.bookmaker) for hr in hit_rates if hr.outcome_name == outcome]
             if not lines:
                 result[outcome] = "No data"
                 continue
@@ -67,7 +77,7 @@ class NBASummarizer(ISummarizerInterface):
         # For both over and under
         result = {}
         for outcome in ["over", "under"]:
-            prices = [(hr.outcome_price, hr.bookmaker) for hr in hit_rates if hr.outcome_name == outcome]
+            prices = [(float(hr.outcome_price), hr.bookmaker) for hr in hit_rates if hr.outcome_name == outcome]
             if not prices:
                 result[outcome] = "No data"
                 continue
@@ -86,80 +96,98 @@ class NBASummarizer(ISummarizerInterface):
         return result
 
     def identify_best_over_line(self, hit_rates):
+        over_rates = [hr for hr in hit_rates if hr.outcome_name == "over"]
+        if not over_rates:
+            logger.info("No over hit rates found for event_id: %s, market_key: %s, outcome_description: %s", hit_rates[0].event_id if hit_rates else "N/A", hit_rates[0].market_key if hit_rates else "N/A", hit_rates[0].outcome_description if hit_rates else "N/A")
+        best = over_rates[0] if over_rates else None
         best_over_line = {
-            "bookmaker": None,
-            "outcome_line": float('inf'),  # Start with highest possible, look for lowest
-            "ten_game_hit_rate": 0,
-            "twenty_game_hit_rate": 0,
-            "thirty_game_hit_rate": 0
+            "bookmaker": best.bookmaker if best.bookmaker else None,
+            "outcome_line": float(best.outcome_point) if best.outcome_point else None,  # Start with highest possible, look for lowest
+            "ten_game_hit_rate": best.ten_game_hit_rate if best.ten_game_hit_rate and best.ten_game_hit_rate is not None else None,
+            "thirty_game_hit_rate": best.thirty_game_hit_rate if best and best.thirty_game_hit_rate is not None else None,
+            "sixty_game_hit_rate": best.sixty_game_hit_rate if best and best.sixty_game_hit_rate is not None else None
         }
 
-        for hr in hit_rates:
-            if hr.outcome_name == "over" and hr.outcome_line < best_over_line["outcome_line"]:
+        for hr in over_rates:
+            if hr.outcome_name == "over" and float(hr.outcome_point) < best_over_line["outcome_line"]:
                 best_over_line["bookmaker"] = hr.bookmaker
-                best_over_line["outcome_line"] = hr.outcome_line
+                best_over_line["outcome_line"] = float(hr.outcome_point)
                 best_over_line["ten_game_hit_rate"] = hr.ten_game_hit_rate
-                best_over_line["twenty_game_hit_rate"] = hr.twenty_game_hit_rate
                 best_over_line["thirty_game_hit_rate"] = hr.thirty_game_hit_rate
+                best_over_line["sixty_game_hit_rate"] = hr.sixty_game_hit_rate
 
         return best_over_line
 
 
     def identify_best_under_line(self, hit_rates):
+        under_rates = [hr for hr in hit_rates if hr.outcome_name == "under"]
+        if not under_rates:
+            logger.info("No under hit rates found for event_id: %s, market_key: %s, outcome_description: %s", hit_rates[0].event_id if hit_rates else "N/A", hit_rates[0].market_key if hit_rates else "N/A", hit_rates[0].outcome_description if hit_rates else "N/A")
+        best = under_rates[0] if under_rates else None
+        
         best_under_line = {
-            "bookmaker": None,
-            "outcome_line": float('-inf'),
-            "ten_game_hit_rate": 0,
-            "twenty_game_hit_rate": 0,
-            "thirty_game_hit_rate": 0
+            "bookmaker": best.bookmaker if best and best.bookmaker else None,
+            "outcome_line": float(best.outcome_point) if best and best.outcome_point else None,  # Start with highest possible, look for lowest
+            "ten_game_hit_rate": best.ten_game_hit_rate if best and best.ten_game_hit_rate is not None else None,
+            "thirty_game_hit_rate": best.thirty_game_hit_rate if best and best.thirty_game_hit_rate is not None else None,
+            "sixty_game_hit_rate": best.sixty_game_hit_rate if best and best.sixty_game_hit_rate is not None else None
         }
 
-        for hr in hit_rates:
-            if hr.outcome_name == "under" and hr.outcome_line > best_under_line["outcome_line"]:
+        for hr in under_rates:
+            if hr.outcome_name == "under" and float(hr.outcome_point) > best_under_line["outcome_line"]:
                 best_under_line["bookmaker"] = hr.bookmaker
-                best_under_line["outcome_line"] = hr.outcome_line
+                best_under_line["outcome_line"] = float(hr.outcome_point)
                 best_under_line["ten_game_hit_rate"] = hr.ten_game_hit_rate
-                best_under_line["twenty_game_hit_rate"] = hr.twenty_game_hit_rate
                 best_under_line["thirty_game_hit_rate"] = hr.thirty_game_hit_rate
+                best_under_line["sixty_game_hit_rate"] = hr.sixty_game_hit_rate
 
         return best_under_line
 
     def identify_best_over_price(self, hit_rates):
+        over_rates = [hr for hr in hit_rates if hr.outcome_name == "over"]
+        if not over_rates:
+            logger.info("No over hit rates found for event_id: %s, market_key: %s, outcome_description: %s", hit_rates[0].event_id if hit_rates else "N/A", hit_rates[0].market_key if hit_rates else "N/A", hit_rates[0].outcome_description if hit_rates else "N/A")
+            return None
+        best = over_rates[0] if over_rates else None
         best_over_price = {
-            "bookmaker": None,
-            "outcome_price": float('-inf'),
-            "ten_game_hit_rate": 0,
-            "twenty_game_hit_rate": 0,
-            "thirty_game_hit_rate": 0
+            "bookmaker": best.bookmaker if best and best.bookmaker else None,
+            "outcome_price": float(best.outcome_price) if best and best.outcome_price else None,
+            "ten_game_hit_rate": best.ten_game_hit_rate if best and best.ten_game_hit_rate is not None else None,
+            "thirty_game_hit_rate": best.thirty_game_hit_rate if best and best.thirty_game_hit_rate is not None else None,
+            "sixty_game_hit_rate": best.sixty_game_hit_rate if best and best.sixty_game_hit_rate is not None else None
         }
 
-        for hr in hit_rates:
-            if hr.outcome_name == "over" and hr.outcome_price > best_over_price["outcome_price"]:
+        for hr in over_rates:
+            if hr.outcome_name == "over" and float(hr.outcome_price) > float(best_over_price["outcome_price"]):
                 best_over_price["bookmaker"] = hr.bookmaker
-                best_over_price["outcome_price"] = hr.outcome_price
+                best_over_price["outcome_price"] = float(hr.outcome_price)
                 best_over_price["ten_game_hit_rate"] = hr.ten_game_hit_rate
-                best_over_price["twenty_game_hit_rate"] = hr.twenty_game_hit_rate
                 best_over_price["thirty_game_hit_rate"] = hr.thirty_game_hit_rate
+                best_over_price["sixty_game_hit_rate"] = hr.sixty_game_hit_rate
 
         return best_over_price
     
 
     def identify_best_under_price(self, hit_rates):
+        under_rates = [hr for hr in hit_rates if hr.outcome_name == "under"]
+        if not under_rates:
+            logger.info("No under hit rates found for event_id: %s, market_key: %s, outcome_description: %s", hit_rates[0].event_id if hit_rates else "N/A", hit_rates[0].market_key if hit_rates else "N/A", hit_rates[0].outcome_description if hit_rates else "N/A")
+        best = under_rates[0] if under_rates else None
         best_under_price = {
-            "bookmaker": None,
-            "outcome_price": float('-inf'),
-            "ten_game_hit_rate": 0,
-            "twenty_game_hit_rate": 0,
-            "thirty_game_hit_rate": 0
+            "bookmaker": best.bookmaker if best and best.bookmaker else None,
+            "outcome_price": float(best.outcome_price) if best and best.outcome_price else None,
+            "ten_game_hit_rate": best.ten_game_hit_rate if best and best.ten_game_hit_rate is not None else None,
+            "thirty_game_hit_rate": best.thirty_game_hit_rate if best and best.thirty_game_hit_rate is not None else None,
+            "sixty_game_hit_rate": best.sixty_game_hit_rate if best and best.sixty_game_hit_rate is not None else None
         }
 
-        for hr in hit_rates:
-            if hr.outcome_name == "under" and hr.outcome_price > best_under_price["outcome_price"]:
+        for hr in under_rates:
+            if hr.outcome_name == "under" and float(hr.outcome_price) > float(best_under_price["outcome_price"]):
                 best_under_price["bookmaker"] = hr.bookmaker
-                best_under_price["outcome_price"] = hr.outcome_price
+                best_under_price["outcome_price"] = float(hr.outcome_price)
                 best_under_price["ten_game_hit_rate"] = hr.ten_game_hit_rate
-                best_under_price["twenty_game_hit_rate"] = hr.twenty_game_hit_rate
                 best_under_price["thirty_game_hit_rate"] = hr.thirty_game_hit_rate
+                best_under_price["sixty_game_hit_rate"] = hr.sixty_game_hit_rate
 
         return best_under_price
 

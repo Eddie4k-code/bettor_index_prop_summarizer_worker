@@ -4,15 +4,26 @@ from interfaces.hit_rate_summarizer_event_queue_repository import IHitRateSummar
 from db.models.hit_rate_summarizer_event_queue import HitRateSummarizerQueue
 import logging
 from interfaces.nba_summary_repository_interface import INBASummaryRepository
+from interfaces.mlb_summary_repository_interface import IMLBSummaryRepository
 from db.models.nba_summaries import NBASummary
+from db.models.mlb_summaries import MLBSummary
 
 logger = logging.getLogger(__name__)
 
 class SummarizerWorker(ISummarizerWorker):
-    def __init__(self, nba_summarizer: ISummarizerInterface, hit_rate_summarizer_event_queue_repository: IHitRateSummarizerEventQueueRepository, nba_summary_repository: INBASummaryRepository):
+    def __init__(
+        self,
+        nba_summarizer: ISummarizerInterface,
+        mlb_summarizer: ISummarizerInterface,
+        hit_rate_summarizer_event_queue_repository: IHitRateSummarizerEventQueueRepository,
+        nba_summary_repository: INBASummaryRepository,
+        mlb_summary_repository: IMLBSummaryRepository,
+    ):
         self.nba_summarizer = nba_summarizer
+        self.mlb_summarizer = mlb_summarizer
         self.hit_rate_summarizer_event_queue_repository = hit_rate_summarizer_event_queue_repository
         self.nba_summary_repository = nba_summary_repository
+        self.mlb_summary_repository = mlb_summary_repository
 
     def process_events(self, batch_size=10):
         """
@@ -29,15 +40,20 @@ class SummarizerWorker(ISummarizerWorker):
             market_key = event.market_key
             outcome_description = event.outcome_description
 
-            # Pass to summarizer for NBA
+            summary = None
             if event.sport_key == "basketball_nba":
-            
                 summary = self.nba_summarizer.summarize(event_id, market_key, outcome_description)
-    
-                # Mark event as consumed
-                self.hit_rate_summarizer_event_queue_repository.mark_event_consumed(event)
+            elif event.sport_key == "baseball_mlb":
+                summary = self.mlb_summarizer.summarize(event_id, market_key, outcome_description)
 
-                # Store summary in database
+            if summary is None:
+                logger.info("No summary generated for event_id: %s, market_key: %s, outcome_description: %s", event_id, market_key, outcome_description)
+                self.hit_rate_summarizer_event_queue_repository.mark_event_consumed(event)
+                continue
+
+            self.hit_rate_summarizer_event_queue_repository.mark_event_consumed(event)
+
+            if event.sport_key == "basketball_nba":
                 nba_summary = NBASummary(
                     event_id=summary["market"]["event_id"],
                     market_key=summary["market"]["market_key"],
@@ -46,7 +62,20 @@ class SummarizerWorker(ISummarizerWorker):
                     home_team=summary["market"]["home_team"],
                     away_team=summary["market"]["away_team"],
                     summary_data=summary,
-                    sport_key = summary["market"]["sport_key"]
+                    sport_key=summary["market"]["sport_key"]
                 )
 
                 self.nba_summary_repository.insert_summary(nba_summary)
+            elif event.sport_key == "baseball_mlb":
+                mlb_summary = MLBSummary(
+                    event_id=summary["market"]["event_id"],
+                    market_key=summary["market"]["market_key"],
+                    outcome_description=summary["market"]["outcome_description"],
+                    commence_time=summary["market"]["commence_time"],
+                    home_team=summary["market"]["home_team"],
+                    away_team=summary["market"]["away_team"],
+                    summary_data=summary,
+                    sport_key=summary["market"]["sport_key"],
+                )
+
+                self.mlb_summary_repository.insert_summary(mlb_summary)

@@ -1,9 +1,11 @@
-from sqlalchemy import Column, Integer, String, Float
-from db.models.base import Base
-from datetime import datetime
+from sqlalchemy import Column, Float, Integer, String
 
-class NBAHitRates(Base):
-    __tablename__ = 'nba_hit_rates'
+from db.models.base import Base
+
+
+class MLBHitRates(Base):
+    __tablename__ = 'mlb_hit_rates'
+
     event_id = Column(String, nullable=False, index=True, primary_key=True)
     bookmaker = Column(String, nullable=False, index=True, primary_key=True)
     market_key = Column(String, nullable=False, index=True, primary_key=True)

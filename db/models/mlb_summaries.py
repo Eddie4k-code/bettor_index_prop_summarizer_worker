@@ -1,11 +1,12 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text
+from sqlalchemy import Column, DateTime, String
 from sqlalchemy.dialects.postgresql import JSON
-from sqlalchemy.ext.declarative import declarative_base
 import datetime
+
 from db.models.base import Base
 
-class NBASummary(Base):
-    __tablename__ = "nba_summaries"
+
+class MLBSummary(Base):
+    __tablename__ = "mlb_summaries"
 
     event_id = Column(String, index=True, nullable=False, primary_key=True)
     market_key = Column(String, nullable=True, primary_key=True)
@@ -13,7 +14,7 @@ class NBASummary(Base):
     commence_time = Column(DateTime, nullable=False)
     home_team = Column(String, nullable=True)
     away_team = Column(String, nullable=True)
-    summary_data = Column(JSON, nullable=False)  # Use Text if not using Postgres
+    summary_data = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
     sport_key = Column(String, nullable=False, primary_key=True)
