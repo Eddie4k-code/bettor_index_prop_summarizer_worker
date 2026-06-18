@@ -2,9 +2,11 @@ import time
 from db.db import get_db
 from repositories.hit_rate_summarizer_event_queue_repository import HitRateSummarizerEventQueueRepository
 from repositories.mlb_hit_rate_repository import MLBHitRatesRepository
+from repositories.mlb_player_injuries_repository import MLBPlayerInjuriesRepository
 from repositories.mlb_summary_repository import MLBSummaryRepository
 from repositories.nba_summary_repository import NBASummaryRepository
 from repositories.nba_hit_rate_repository import NBAHitRatesRepository
+from services.mlb_relevant_injury_context_service import MLBRelevantInjuryContextService
 from summarizers.mlb_summarizer import MLBSummarizer
 from summarizers.nba_summarizer import NBASummarizer
 from worker.summarizer_worker import SummarizerWorker
@@ -26,8 +28,10 @@ def main():
         mlb_summary_repo = MLBSummaryRepository(db_session)
         nba_hit_rates_repo = NBAHitRatesRepository(db_session)
         mlb_hit_rates_repo = MLBHitRatesRepository(db_session)
+        mlb_player_injuries_repo = MLBPlayerInjuriesRepository(db_session)
+        mlb_relevant_injury_context_service = MLBRelevantInjuryContextService(mlb_player_injuries_repo)
         nba_summarizer = NBASummarizer(nba_hit_rates_repo)
-        mlb_summarizer = MLBSummarizer(mlb_hit_rates_repo)
+        mlb_summarizer = MLBSummarizer(mlb_hit_rates_repo, mlb_relevant_injury_context_service)
         worker = SummarizerWorker(
             nba_summarizer=nba_summarizer,
             mlb_summarizer=mlb_summarizer,

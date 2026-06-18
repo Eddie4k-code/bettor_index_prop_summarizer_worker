@@ -1,6 +1,7 @@
 import logging
 
 from interfaces.hit_rates_repository_interface import HitRatesRepositoryInterface
+from interfaces.relevant_injury_context_interface import PropInjuryContext, RelevantInjuryContextInterface
 from interfaces.summarizer_interface import ISummarizerInterface
 
 
@@ -8,8 +9,13 @@ logger = logging.getLogger(__name__)
 
 
 class MLBSummarizer(ISummarizerInterface):
-    def __init__(self, mlb_hit_rates_repository: HitRatesRepositoryInterface):
+    def __init__(
+        self,
+        mlb_hit_rates_repository: HitRatesRepositoryInterface,
+        relevant_injury_context_service: RelevantInjuryContextInterface | None = None,
+    ):
         self.mlb_hit_rates_repository = mlb_hit_rates_repository
+        self.relevant_injury_context_service = relevant_injury_context_service
 
     def summarize(self, event_id, market_key, outcome_description):
         hit_rates = self.mlb_hit_rates_repository.get_hit_rates_by_keys(event_id, market_key, outcome_description)
@@ -43,8 +49,59 @@ class MLBSummarizer(ISummarizerInterface):
         summary["best_under_price"] = self.identify_best_under_price(hit_rates)
         summary["line_discrepancy"] = self.find_line_discrepancy(hit_rates)
         summary["odds_discrepancy"] = self.find_odds_discrepancy(hit_rates)
+        summary["relevant_injuries"] = self._get_relevant_injuries(
+            hit_rates,
+            event_id,
+            market_key,
+            outcome_description,
+        )
 
         return summary
+
+    def _get_relevant_injuries(self, hit_rates, event_id, market_key, outcome_description):
+        if not self.relevant_injury_context_service or not hit_rates:
+            return []
+
+        prop_context = self._build_prop_injury_context(
+            hit_rates,
+            event_id,
+            market_key,
+            outcome_description,
+        )
+        relevant_injuries = self.relevant_injury_context_service.get_relevant_injury_context(prop_context)
+
+        return [self._serialize_relevant_injury(injury) for injury in relevant_injuries]
+
+    def _build_prop_injury_context(self, hit_rates, event_id, market_key, outcome_description):
+        first_hit_rate = hit_rates[0]
+        return PropInjuryContext(
+            sport_key=first_hit_rate.sport_key,
+            event_id=event_id,
+            market_key=market_key,
+            outcome_description=outcome_description,
+            home_team_id=getattr(first_hit_rate, "home_team_id", None),
+            away_team_id=getattr(first_hit_rate, "away_team_id", None),
+            player_id=getattr(first_hit_rate, "player_id", None),
+            player_team_id=getattr(first_hit_rate, "team_id", None),
+        )
+
+    def _serialize_relevant_injury(self, relevant_injury):
+        return {
+            "player_id": relevant_injury.player_id,
+            "team_id": relevant_injury.team_id,
+            "date": relevant_injury.date,
+            "return_date": relevant_injury.return_date,
+            "display_name": relevant_injury.display_name,
+            "position": relevant_injury.position,
+            "type": relevant_injury.type,
+            "detail": relevant_injury.detail,
+            "side": relevant_injury.side,
+            "status": relevant_injury.status,
+            "long_comment": relevant_injury.long_comment,
+            "short_comment": relevant_injury.short_comment,
+            "relevance_reason": relevant_injury.relevance_reason,
+            "metadata": relevant_injury.metadata,
+        }
 
     def find_line_discrepancy(self, hit_rates):
         result = {}
