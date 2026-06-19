@@ -26,7 +26,14 @@ def make_summarizer_with_data(hit_rates):
     repo = MagicMock()
     repo.get_hit_rates_by_keys.return_value = hit_rates
     signal_service = MagicMock()
-    signal_service.build_signal.return_value = {"side": "OVER", "strength": "medium", "action": "shop_price"}
+    signal_service.build_signal.return_value = {
+        "side": "OVER",
+        "strength": "medium",
+        "action": "shop_price",
+        "lean_label": "Lean Over",
+        "market_label": "Worth Watching",
+        "reason_text": "Backend sees a clear over trend, but the current market is not strong enough yet.",
+    }
     return NBASummarizer(repo, signal_service)
 
 def test_build_summary_success(mocker):
@@ -43,6 +50,8 @@ def test_build_summary_success(mocker):
     assert "odds_discrepancy" in summary
     assert summary["market"]["commence_time"] == hit_rates[0].commence_time.isoformat()
     assert summary["bettorindexpropsignals"]["side"] == "OVER"
+    assert summary["bettorindexpropsignals"]["lean_label"] == "Lean Over"
+    assert summary["bettorindexpropsignals"]["market_label"] == "Worth Watching"
 
 def test_line_discrepancy_found():
     hit_rates = [

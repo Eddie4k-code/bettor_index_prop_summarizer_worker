@@ -133,6 +133,64 @@ def get_action(
     return "shop_price"
 
 
+def get_lean_label(side: str, strength: str) -> str:
+    if side == "NONE" or strength == "none":
+        return "No Strong Lean"
+
+    side_label = side.title()
+    if strength == "strong":
+        return f"Strong Lean {side_label}"
+    if strength == "medium":
+        return f"Lean {side_label}"
+    return f"Slight Lean {side_label}"
+
+
+def get_market_label(action: str) -> str:
+    if action == "bet_now":
+        return "Opportunity"
+    if action in {"shop_line", "shop_price"}:
+        return "Worth Watching"
+    return "Potential Pass"
+
+
+def get_reason_code(action: str, side: str, market_state: str, selected_value_edge: float | None) -> str:
+    if side == "NONE":
+        return "no_strong_trend"
+    if action == "bet_now":
+        return "positive_edge_current_price"
+    if market_state == "books_disagree":
+        return "books_disagree"
+    if selected_value_edge is not None and selected_value_edge < 0:
+        return "negative_edge_current_price"
+    return "wait_for_better_market"
+
+
+def get_reason_text(
+    side: str,
+    strength: str,
+    action: str,
+    market_state: str,
+    selected_value_edge: float | None,
+) -> str:
+    if side == "NONE" or strength == "none":
+        return "Backend does not see a strong over or under trend right now."
+
+    trend_strength = {
+        "strong": "strong",
+        "medium": "clear",
+        "weak": "slight",
+    }.get(strength, "clear")
+    trend_side = side.lower()
+
+    if action == "bet_now":
+        return f"Backend sees a {trend_strength} {trend_side} trend with positive edge at the current best price."
+    if market_state == "books_disagree":
+        return f"Backend sees a {trend_strength} {trend_side} trend, but books are not aligned on the current market."
+    if selected_value_edge is not None and selected_value_edge < 0:
+        return f"Backend sees a {trend_strength} {trend_side} trend, but not enough edge at the current best price."
+    return f"Backend sees a {trend_strength} {trend_side} trend, but the current market is not strong enough yet."
+
+
 def build_signal_payload(
     best_over_line: dict[str, Any] | None,
     best_under_line: dict[str, Any] | None,
@@ -180,11 +238,19 @@ def build_signal_payload(
     recent_edge_abs = abs(recent_edge) if recent_edge is not None else 0.0
     strength = "none" if side == "NONE" else get_strength(recent_edge_abs, selected_value_edge)
     action = get_action(side, market_state, selected_value_edge, selected_implied_probability)
+    lean_label = get_lean_label(side, strength)
+    market_label = get_market_label(action)
+    reason_code = get_reason_code(action, side, market_state, selected_value_edge)
+    reason_text = get_reason_text(side, strength, action, market_state, selected_value_edge)
 
     return {
         "side": side,
         "strength": strength,
         "action": action,
+        "lean_label": lean_label,
+        "market_label": market_label,
+        "reason_code": reason_code,
+        "reason_text": reason_text,
         "market_state": market_state,
         "expected_trend_windows": expected_window_labels,
         "over_trend_windows": over_trend_windows,

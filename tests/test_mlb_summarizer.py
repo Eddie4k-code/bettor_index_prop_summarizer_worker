@@ -47,7 +47,14 @@ def make_summarizer_with_data(hit_rates, relevant_injuries=None, signal_payload=
     injury_service = MagicMock()
     injury_service.get_relevant_injury_context.return_value = relevant_injuries or []
     signal_service = MagicMock()
-    signal_service.build_signal.return_value = signal_payload or {"side": "UNDER", "strength": "strong", "action": "bet_now"}
+    signal_service.build_signal.return_value = signal_payload or {
+        "side": "UNDER",
+        "strength": "strong",
+        "action": "bet_now",
+        "lean_label": "Strong Lean Under",
+        "market_label": "Opportunity",
+        "reason_text": "Backend sees a strong under trend with positive edge at the current best price.",
+    }
     return MLBSummarizer(repo, injury_service, signal_service), repo, injury_service, signal_service
 
 
@@ -86,6 +93,8 @@ def test_build_summary_success():
     assert "odds_discrepancy" in summary
     assert summary["relevant_injuries"] == []
     assert summary["bettorindexpropsignals"]["side"] == "UNDER"
+    assert summary["bettorindexpropsignals"]["lean_label"] == "Strong Lean Under"
+    assert summary["bettorindexpropsignals"]["market_label"] == "Opportunity"
     injury_service.get_relevant_injury_context.assert_called_once()
     signal_service.build_signal.assert_called_once()
 
