@@ -82,7 +82,7 @@ class MLBSummarizer(ISummarizerInterface):
             home_team_id=getattr(first_hit_rate, "home_team_id", None),
             away_team_id=getattr(first_hit_rate, "away_team_id", None),
             player_id=getattr(first_hit_rate, "player_id", None),
-            player_team_id=getattr(first_hit_rate, "team_id", None),
+            player_team_id=getattr(first_hit_rate, "player_team_id", None),
         )
 
     def _serialize_relevant_injury(self, relevant_injury):

@@ -20,7 +20,7 @@ class FakeHitRate:
         away_team="BOS",
         sport_key="baseball_mlb",
         player_id=123,
-        team_id=None,
+        player_team_id=None,
         home_team_id=None,
         away_team_id=None,
     ):
@@ -36,7 +36,7 @@ class FakeHitRate:
         self.away_team = away_team
         self.sport_key = sport_key
         self.player_id = player_id
-        self.team_id = team_id
+        self.player_team_id = player_team_id
         self.home_team_id = home_team_id
         self.away_team_id = away_team_id
 
@@ -94,11 +94,11 @@ def test_build_summary_serializes_relevant_injuries():
             105,
             "FanDuel",
             player_id=77,
-            team_id=10,
+            player_team_id=10,
             home_team_id=10,
             away_team_id=20,
         ),
-        FakeHitRate("under", 1.5, -102, "DraftKings", player_id=77, team_id=10, home_team_id=10, away_team_id=20),
+        FakeHitRate("under", 1.5, -102, "DraftKings", player_id=77, player_team_id=10, home_team_id=10, away_team_id=20),
     ]
     relevant_injury = RelevantInjuryContext(
         player_id=99,

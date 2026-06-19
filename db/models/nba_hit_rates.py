@@ -21,3 +21,6 @@ class NBAHitRates(Base):
     market_last_update = Column(String, nullable=False)
     home_team = Column(String, nullable=False)
     away_team = Column(String, nullable=False)
+    player_team_id = Column(Integer, nullable=True)
+    home_team_id = Column(Integer, nullable=True)
+    away_team_id = Column(Integer, nullable=True)
