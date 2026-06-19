@@ -64,12 +64,13 @@ def test_nba_signal_can_use_sport_specific_window_config():
     assert signal["weighted_over_rate"] == pytest.approx(0.486)
     assert signal["weighted_under_rate"] == pytest.approx(0.608)
     assert signal["market_state"] == "books_disagree"
-    assert signal["action"] == "shop_line"
-    assert signal["strength"] == "medium"
-    assert signal["lean_label"] == "Lean Under"
+    assert signal["action"] == "bet_now"
+    assert signal["strength"] == "strong"
+    assert signal["lean_label"] == "Strong Lean Under"
     assert signal["market_label"] == "Worth Watching"
-    assert signal["reason_code"] == "books_disagree"
-    assert signal["reason_text"] == "Backend sees a clear under trend, but books are not aligned on the current market."
+    assert signal["market_label"] == "Opportunity"
+    assert signal["reason_code"] == "positive_edge_disagreement_market"
+    assert signal["reason_text"] == "Backend sees a strong under trend, and books are offering different lines."
 
 
 def test_signal_marks_potential_pass_when_no_strong_trend_exists():
@@ -96,3 +97,34 @@ def test_signal_marks_potential_pass_when_no_strong_trend_exists():
     assert signal["market_label"] == "Potential Pass"
     assert signal["reason_code"] == "no_strong_trend"
     assert signal["reason_text"] == "Backend does not see a strong over or under trend right now."
+
+
+def test_signal_keeps_books_disagree_as_worth_watching_when_edge_is_not_strong_enough():
+    service = NBABettorIndexPropSignalsService(
+        window_configs=[
+            {"key": "ten_game_hit_rate", "label": "10D", "weight": 0.7},
+            {"key": "thirty_game_hit_rate", "label": "30D", "weight": 0.3},
+        ]
+    )
+
+    signal = service.build_signal(
+        best_over_line={
+            "ten_game_hit_rate": 0.48,
+            "thirty_game_hit_rate": 0.5,
+        },
+        best_under_line={
+            "ten_game_hit_rate": 0.57,
+            "thirty_game_hit_rate": 0.55,
+        },
+        best_over_price={"outcome_price": 105},
+        best_under_price={"outcome_price": -115},
+        line_discrepancy_over={"discrepancy": 1.0},
+    )
+
+    assert signal["side"] == "UNDER"
+    assert signal["strength"] == "medium"
+    assert signal["action"] == "shop_line"
+    assert signal["lean_label"] == "Lean Under"
+    assert signal["market_label"] == "Worth Watching"
+    assert signal["reason_code"] == "books_disagree"
+    assert signal["reason_text"] == "Backend sees a clear under trend, but books are not aligned on the current market."

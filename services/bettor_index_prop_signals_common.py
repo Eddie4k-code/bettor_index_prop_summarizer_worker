@@ -116,18 +116,21 @@ def get_strength(recent_edge_abs: float, selected_value_edge: float | None) -> s
 
 def get_action(
     side: str,
+    strength: str,
     market_state: str,
     selected_value_edge: float | None,
     selected_implied_probability: float | None,
 ) -> str:
     if side == "NONE":
         return "pass"
-    if market_state == "books_disagree":
-        return "shop_line"
     if selected_value_edge is not None and selected_value_edge < 0:
         return "pass"
     if selected_implied_probability is not None and selected_implied_probability >= VERY_HIGH_JUICE_IMPLIED_PROBABILITY:
         return "shop_price"
+    if market_state == "books_disagree":
+        if strength == "strong" and selected_value_edge is not None and selected_value_edge >= STRONG_VALUE_EDGE:
+            return "bet_now"
+        return "shop_line"
     if selected_value_edge is not None and selected_value_edge >= get_required_value_edge(selected_implied_probability):
         return "bet_now"
     return "shop_price"
@@ -156,6 +159,8 @@ def get_market_label(action: str) -> str:
 def get_reason_code(action: str, side: str, market_state: str, selected_value_edge: float | None) -> str:
     if side == "NONE":
         return "no_strong_trend"
+    if action == "bet_now" and market_state == "books_disagree":
+        return "positive_edge_disagreement_market"
     if action == "bet_now":
         return "positive_edge_current_price"
     if market_state == "books_disagree":
@@ -182,6 +187,8 @@ def get_reason_text(
     }.get(strength, "clear")
     trend_side = side.lower()
 
+    if action == "bet_now" and market_state == "books_disagree":
+        return f"Backend sees a {trend_strength} {trend_side} trend, and books are offering different lines."
     if action == "bet_now":
         return f"Backend sees a {trend_strength} {trend_side} trend with positive edge at the current best price."
     if market_state == "books_disagree":
@@ -237,7 +244,7 @@ def build_signal_payload(
     market_state = get_market_state(line_discrepancy_over)
     recent_edge_abs = abs(recent_edge) if recent_edge is not None else 0.0
     strength = "none" if side == "NONE" else get_strength(recent_edge_abs, selected_value_edge)
-    action = get_action(side, market_state, selected_value_edge, selected_implied_probability)
+    action = get_action(side, strength, market_state, selected_value_edge, selected_implied_probability)
     lean_label = get_lean_label(side, strength)
     market_label = get_market_label(action)
     reason_code = get_reason_code(action, side, market_state, selected_value_edge)
