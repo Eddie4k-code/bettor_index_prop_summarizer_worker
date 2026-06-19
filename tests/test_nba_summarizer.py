@@ -7,15 +7,17 @@ from datetime import datetime
 class FakeHitRate:
     def __init__(self, outcome_name, outcome_line, outcome_price, bookmaker, commence_time=None,
                  ten_game_hit_rate=0, twenty_game_hit_rate=0, thirty_game_hit_rate=0,
-                 home_team="LAL", away_team="BOS", sport_key="nba"):
+                 sixty_game_hit_rate=0, home_team="LAL", away_team="BOS", sport_key="basketball_nba"):
         self.outcome_name = outcome_name
         self.outcome_line = outcome_line
+        self.outcome_point = outcome_line
         self.outcome_price = outcome_price
         self.bookmaker = bookmaker
         self.commence_time = commence_time or datetime.now()
         self.ten_game_hit_rate = ten_game_hit_rate
         self.twenty_game_hit_rate = twenty_game_hit_rate
         self.thirty_game_hit_rate = thirty_game_hit_rate
+        self.sixty_game_hit_rate = sixty_game_hit_rate
         self.home_team = home_team
         self.away_team = away_team
         self.sport_key = sport_key
@@ -23,7 +25,9 @@ class FakeHitRate:
 def make_summarizer_with_data(hit_rates):
     repo = MagicMock()
     repo.get_hit_rates_by_keys.return_value = hit_rates
-    return NBASummarizer(repo)
+    signal_service = MagicMock()
+    signal_service.build_signal.return_value = {"side": "OVER", "strength": "medium", "action": "shop_price"}
+    return NBASummarizer(repo, signal_service)
 
 def test_build_summary_success(mocker):
     hit_rates = [
@@ -37,6 +41,8 @@ def test_build_summary_success(mocker):
     assert "best_under_line" in summary
     assert "line_discrepancy" in summary
     assert "odds_discrepancy" in summary
+    assert summary["market"]["commence_time"] == hit_rates[0].commence_time.isoformat()
+    assert summary["bettorindexpropsignals"]["side"] == "OVER"
 
 def test_line_discrepancy_found():
     hit_rates = [

@@ -1,16 +1,21 @@
-from collections import defaultdict
-
-from interfaces.summarizer_interface import ISummarizerInterface
-from interfaces.hit_rates_repository_interface import HitRatesRepositoryInterface
-from datetime import datetime
+from datetime import date, datetime
 import logging
+
+from interfaces.bettor_index_prop_signals_interface import IBettorIndexPropSignalsService
+from interfaces.hit_rates_repository_interface import HitRatesRepositoryInterface
+from interfaces.summarizer_interface import ISummarizerInterface
 
 
 logger = logging.getLogger(__name__)
 
 class NBASummarizer(ISummarizerInterface):
-    def __init__(self,nba_hit_rates_repository: HitRatesRepositoryInterface):
+    def __init__(
+        self,
+        nba_hit_rates_repository: HitRatesRepositoryInterface,
+        bettor_index_prop_signals_service: IBettorIndexPropSignalsService | None = None,
+    ):
         self.nba_hit_rates_repository = nba_hit_rates_repository
+        self.bettor_index_prop_signals_service = bettor_index_prop_signals_service
 
     def summarize(self, event_id, market_key, outcome_description) -> str:
         
@@ -34,7 +39,7 @@ class NBASummarizer(ISummarizerInterface):
             "market_key": market_key,
             "outcome_description": outcome_description,
             "event_id": event_id,
-            "commence_time": hit_rates[0].commence_time if hit_rates else None,
+            "commence_time": self._serialize_datetime(hit_rates[0].commence_time) if hit_rates else None,
             "home_team": hit_rates[0].home_team if hit_rates else None,
             "away_team": hit_rates[0].away_team if hit_rates else None,
             "sport_key": hit_rates[0].sport_key if hit_rates else None
@@ -48,8 +53,28 @@ class NBASummarizer(ISummarizerInterface):
         summary["line_discrepancy"] = self.find_line_discrepancy(hit_rates)
         # Add odds discrepancy
         summary["odds_discrepancy"] = self.find_odds_discrepancy(hit_rates)
+        summary["bettorindexpropsignals"] = self._build_bettor_index_prop_signals(summary)
 
         return summary
+
+    def _build_bettor_index_prop_signals(self, summary):
+        if not self.bettor_index_prop_signals_service:
+            return {}
+
+        return self.bettor_index_prop_signals_service.build_signal(
+            best_over_line=summary.get("best_over_line"),
+            best_under_line=summary.get("best_under_line"),
+            best_over_price=summary.get("best_over_price"),
+            best_under_price=summary.get("best_under_price"),
+            line_discrepancy_over=summary.get("line_discrepancy", {}).get("over"),
+        )
+
+    def _serialize_datetime(self, value):
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
+        return value
 
     def find_line_discrepancy(self, hit_rates):
         # For both over and under

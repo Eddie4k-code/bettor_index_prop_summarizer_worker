@@ -1,6 +1,8 @@
 from datetime import datetime
 from unittest.mock import Mock
 
+import pytest
+
 from db.models.mlb_player_injuries import MLBPlayerInjuries
 from interfaces.relevant_injury_context_interface import PropInjuryContext
 from services.mlb_relevant_injury_context_service import MLBRelevantInjuryContextService
@@ -64,6 +66,7 @@ def test_hitter_prop_returns_direct_hitter_and_opposing_pitcher_injuries():
     assert len(results) == 2
     assert results[0].metadata["relevance_type"] == "direct_player_injury"
     assert results[1].metadata["relevance_type"] == "opposing_pitcher_injury"
+    assert results[0].metadata["market_family"] == "batter_contact_props"
     repo.get_injuries_for_player.assert_called_once_with(10)
     repo.get_injuries_for_team.assert_called_once_with(200)
 
@@ -89,6 +92,80 @@ def test_pitcher_prop_returns_direct_pitcher_and_opposing_lineup_weakness():
     assert len(results) == 2
     assert results[0].metadata["relevance_type"] == "direct_player_injury"
     assert results[1].metadata["relevance_type"] == "opposing_lineup_weakness"
+
+
+def test_batter_runs_scored_includes_same_team_lineup_weakness():
+    player_injury = build_injury(player_id=10, team_id=100, position="CF", display_name="Batter A")
+    opposing_pitcher_injury = build_injury(player_id=99, team_id=200, position="SP", display_name="Pitcher B")
+    same_team_hitter_injury = build_injury(player_id=11, team_id=100, position="1B", display_name="Teammate C")
+
+    repo = Mock()
+    repo.get_injuries_for_player.return_value = [player_injury]
+    repo.get_injuries_for_team.side_effect = [[opposing_pitcher_injury], [same_team_hitter_injury]]
+    service = MLBRelevantInjuryContextService(repo, now_provider=lambda: NOW)
+
+    context = PropInjuryContext(
+        sport_key="baseball_mlb",
+        event_id="evt6",
+        market_key="batter_runs_scored",
+        outcome_description="Batter A",
+        home_team_id=100,
+        away_team_id=200,
+        player_id=10,
+        player_team_id=100,
+    )
+
+    results = service.get_relevant_injury_context(context)
+
+    assert len(results) == 3
+    assert results[1].metadata["relevance_type"] == "opposing_pitcher_injury"
+    assert results[2].metadata["relevance_type"] == "same_team_lineup_weakness"
+    assert results[2].metadata["context_side"] == "same"
+
+
+def test_batter_total_bases_excludes_same_team_lineup_weakness():
+    player_injury = build_injury(player_id=10, team_id=100, position="CF", display_name="Batter A")
+    opposing_pitcher_injury = build_injury(player_id=99, team_id=200, position="SP", display_name="Pitcher B")
+    service, repo = make_service([player_injury], [opposing_pitcher_injury])
+
+    context = PropInjuryContext(
+        sport_key="baseball_mlb",
+        event_id="evt7",
+        market_key="batter_total_bases",
+        outcome_description="Batter A",
+        home_team_id=100,
+        away_team_id=200,
+        player_id=10,
+        player_team_id=100,
+    )
+
+    results = service.get_relevant_injury_context(context)
+
+    assert len(results) == 2
+    assert all(result.metadata["relevance_type"] != "same_team_lineup_weakness" for result in results)
+    repo.get_injuries_for_team.assert_called_once_with(200)
+
+
+def test_batter_home_runs_excludes_same_team_lineup_weakness():
+    player_injury = build_injury(player_id=10, team_id=100, position="1B", display_name="Batter A")
+    opposing_pitcher_injury = build_injury(player_id=99, team_id=200, position="SP", display_name="Pitcher B")
+    service, _ = make_service([player_injury], [opposing_pitcher_injury])
+
+    context = PropInjuryContext(
+        sport_key="baseball_mlb",
+        event_id="evt8",
+        market_key="batter_home_runs",
+        outcome_description="Batter A",
+        home_team_id=100,
+        away_team_id=200,
+        player_id=10,
+        player_team_id=100,
+    )
+
+    results = service.get_relevant_injury_context(context)
+
+    assert len(results) == 2
+    assert all(result.metadata["context_side"] != "same" for result in results)
 
 
 def test_stale_injuries_are_excluded_without_future_return_date():
@@ -141,6 +218,70 @@ def test_future_return_date_keeps_recent_status_relevant():
     results = service.get_relevant_injury_context(context)
 
     assert len(results) == 1
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        "day-to-day",
+        "7-day-il",
+        "10-day-il",
+        "15-day-il",
+        "60-day-il",
+        "7-Day-IL",
+        "10-DAY-IL",
+        "15-Day-IL",
+        "60-Day-IL",
+    ],
+)
+def test_active_mlb_statuses_are_case_insensitive(status: str):
+    injury = build_injury(
+        player_id=10,
+        team_id=100,
+        position="CF",
+        status=status,
+    )
+    service, _ = make_service([injury], [])
+
+    context = PropInjuryContext(
+        sport_key="baseball_mlb",
+        event_id="evt9",
+        market_key="batter_hits",
+        outcome_description="Batter A",
+        player_id=10,
+        player_team_id=100,
+        home_team_id=100,
+        away_team_id=200,
+    )
+
+    results = service.get_relevant_injury_context(context)
+
+    assert len(results) == 1
+
+
+def test_unsupported_status_is_excluded():
+    injury = build_injury(
+        player_id=10,
+        team_id=100,
+        position="CF",
+        status="probable",
+    )
+    service, _ = make_service([injury], [])
+
+    context = PropInjuryContext(
+        sport_key="baseball_mlb",
+        event_id="evt10",
+        market_key="batter_hits",
+        outcome_description="Batter A",
+        player_id=10,
+        player_team_id=100,
+        home_team_id=100,
+        away_team_id=200,
+    )
+
+    results = service.get_relevant_injury_context(context)
+
+    assert results == []
 
 
 def test_unsupported_market_returns_no_results():

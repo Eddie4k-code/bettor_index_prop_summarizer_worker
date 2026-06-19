@@ -14,8 +14,8 @@ def test_summarizer_worker_processes_events(mocker):
         FakeEvent("evt2", "player_hits", "Aaron Judge", "baseball_mlb"),
     ]
     fake_summaries = [
-        {"market": {"event_id": "evt1", "market_key": "points", "outcome_description": "over", "commence_time": None, "home_team": "A", "away_team": "B", "sport_key": "basketball_nba"}},
-        {"market": {"event_id": "evt2", "market_key": "player_hits", "outcome_description": "Aaron Judge", "commence_time": None, "home_team": "A", "away_team": "B", "sport_key": "baseball_mlb"}}
+        {"market": {"event_id": "evt1", "market_key": "points", "outcome_description": "over", "commence_time": None, "home_team": "A", "away_team": "B", "sport_key": "basketball_nba"}, "bettorindexpropsignals": {"side": "OVER"}},
+        {"market": {"event_id": "evt2", "market_key": "player_hits", "outcome_description": "Aaron Judge", "commence_time": None, "home_team": "A", "away_team": "B", "sport_key": "baseball_mlb"}, "bettorindexpropsignals": {"side": "UNDER"}}
     ]
 
     mock_queue_repo = mocker.Mock()
@@ -46,6 +46,8 @@ def test_summarizer_worker_processes_events(mocker):
     assert mock_queue_repo.mark_event_consumed.call_count == 2
     assert mock_nba_summary_repo.insert_summary.call_count == 1
     assert mock_mlb_summary_repo.insert_summary.call_count == 1
+    assert mock_nba_summary_repo.insert_summary.call_args[0][0].summary_data["bettorindexpropsignals"]["side"] == "OVER"
+    assert mock_mlb_summary_repo.insert_summary.call_args[0][0].summary_data["bettorindexpropsignals"]["side"] == "UNDER"
     mock_summarizer.summarize.assert_called_once_with("evt1", "points", "over")
     mock_mlb_summarizer.summarize.assert_called_once_with("evt2", "player_hits", "Aaron Judge")
 

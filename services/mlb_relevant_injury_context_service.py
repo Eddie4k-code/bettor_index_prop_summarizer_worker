@@ -9,29 +9,102 @@ from interfaces.relevant_injury_context_interface import (
     RelevantInjuryContextInterface,
 )
 
-
-HITTER_MARKETS = {
-    "batter_home_runs",
-    "batter_hits",
-    "batter_total_bases",
-    "batter_rbis",
-    "batter_runs_scored",
-    "batter_hits_runs_rbis",
-    "batter_singles",
-    "batter_doubles",
-    "batter_triples",
-    "batter_walks",
-    "batter_strikeouts",
-    "batter_stolen_bases",
-    "batter_fantasy_score",
+MARKET_FAMILIES = {
+    "pitcher_strikeouts": "pitcher_props",
+    "pitcher_hits_allowed": "pitcher_props",
+    "pitcher_walks": "pitcher_props",
+    "pitcher_earned_runs": "pitcher_props",
+    "pitcher_outs": "pitcher_props",
+    "batter_hits": "batter_contact_props",
+    "batter_singles": "batter_contact_props",
+    "batter_doubles": "batter_contact_props",
+    "batter_triples": "batter_contact_props",
+    "batter_home_runs": "batter_power_props",
+    "batter_rbis": "batter_power_props",
+    "batter_total_bases": "batter_total_base_props",
+    "batter_hits_runs_rbis": "batter_total_base_props",
+    "batter_runs_scored": "batter_scoring_props",
+    "batter_stolen_bases": "batter_speed_props",
+    "batter_walks": "batter_plate_discipline_props",
+    "batter_strikeouts": "batter_plate_discipline_props",
+    "batter_fantasy_score": "batter_fantasy_props",
 }
 
-PITCHER_MARKETS = {
-    "pitcher_strikeouts",
-    "pitcher_hits_allowed",
-    "pitcher_walks",
-    "pitcher_earned_runs",
-    "pitcher_outs",
+DIRECT_PLAYER_ROLE_BY_FAMILY = {
+    "pitcher_props": "pitcher",
+    "batter_contact_props": "hitter",
+    "batter_power_props": "hitter",
+    "batter_total_base_props": "hitter",
+    "batter_scoring_props": "hitter",
+    "batter_speed_props": "hitter",
+    "batter_plate_discipline_props": "hitter",
+    "batter_fantasy_props": "hitter",
+}
+
+TEAM_CONTEXTS_BY_FAMILY = {
+    "pitcher_props": [
+        {
+            "team_side": "opposing",
+            "expected_role": "hitter",
+            "reason_template": "Opposing lineup weakness may affect this pitcher prop",
+            "relevance_type": "opposing_lineup_weakness",
+        }
+    ],
+    "batter_contact_props": [
+        {
+            "team_side": "opposing",
+            "expected_role": "pitcher",
+            "reason_template": "Opposing pitcher injury may affect this batter prop",
+            "relevance_type": "opposing_pitcher_injury",
+        }
+    ],
+    "batter_power_props": [
+        {
+            "team_side": "opposing",
+            "expected_role": "pitcher",
+            "reason_template": "Opposing pitcher injury may affect this batter prop",
+            "relevance_type": "opposing_pitcher_injury",
+        }
+    ],
+    "batter_total_base_props": [
+        {
+            "team_side": "opposing",
+            "expected_role": "pitcher",
+            "reason_template": "Opposing pitcher injury may affect this batter prop",
+            "relevance_type": "opposing_pitcher_injury",
+        }
+    ],
+    "batter_scoring_props": [
+        {
+            "team_side": "opposing",
+            "expected_role": "pitcher",
+            "reason_template": "Opposing pitcher injury may affect this batter prop",
+            "relevance_type": "opposing_pitcher_injury",
+        },
+        {
+            "team_side": "same",
+            "expected_role": "hitter",
+            "reason_template": "Same-team lineup injuries may reduce run-scoring support for this batter prop",
+            "relevance_type": "same_team_lineup_weakness",
+        },
+    ],
+    "batter_speed_props": [],
+    "batter_plate_discipline_props": [
+        {
+            "team_side": "opposing",
+            "expected_role": "pitcher",
+            "reason_template": "Opposing pitcher injury may affect this batter prop",
+            "relevance_type": "opposing_pitcher_injury",
+        }
+    ],
+    "batter_fantasy_props": [
+        {
+            "team_side": "opposing",
+            "expected_role": "pitcher",
+            "reason_template": "Opposing pitcher injury may affect this batter prop",
+            "relevance_type": "opposing_pitcher_injury",
+        }
+    ],
 }
 
 PITCHER_POSITIONS = {
@@ -62,6 +135,15 @@ HITTER_POSITIONS = {
     "Third Baseman",
 }
 
+DEFAULT_ACTIVE_STATUSES = {
+    "out",
+    "day-to-day",
+    "7-day-il",
+    "10-day-il",
+    "15-day-il",
+    "60-day-il",
+}
+
 
 class MLBRelevantInjuryContextService(RelevantInjuryContextInterface):
     def __init__(
@@ -73,42 +155,34 @@ class MLBRelevantInjuryContextService(RelevantInjuryContextInterface):
     ):
         self.mlb_player_injuries_repository = mlb_player_injuries_repository
         self.recency_days = recency_days
-        self.active_statuses = {status.lower() for status in (active_statuses or {"out", "day-to-day"})}
+        self.active_statuses = {status.lower() for status in (active_statuses or DEFAULT_ACTIVE_STATUSES)}
         self.now_provider = now_provider or datetime.utcnow
 
     def get_relevant_injury_context(self, prop_context: PropInjuryContext) -> list[RelevantInjuryContext]:
-        market_group = self._classify_market(prop_context.market_key)
-        if market_group is None:
+        market_family = self._classify_market_family(prop_context.market_key)
+        if market_family is None:
             return []
 
         relevant_injuries: list[RelevantInjuryContext] = []
         if prop_context.player_id is not None:
             player_injuries = self.mlb_player_injuries_repository.get_injuries_for_player(prop_context.player_id)
-            relevant_injuries.extend(self._build_direct_player_matches(player_injuries, market_group, prop_context))
+            relevant_injuries.extend(self._build_direct_player_matches(player_injuries, market_family, prop_context))
 
-        opposing_team_id = self._get_opposing_team_id(prop_context)
-        if opposing_team_id is None:
-            return relevant_injuries
+        for context_rule in TEAM_CONTEXTS_BY_FAMILY.get(market_family, []):
+            team_id = self._get_context_team_id(prop_context, context_rule["team_side"])
+            if team_id is None:
+                continue
 
-        opposing_team_injuries = self.mlb_player_injuries_repository.get_injuries_for_team(opposing_team_id)
-        if market_group == "hitter":
+            team_injuries = self.mlb_player_injuries_repository.get_injuries_for_team(team_id)
             relevant_injuries.extend(
-                self._build_opposing_team_matches(
-                    injuries=opposing_team_injuries,
-                    expected_role="pitcher",
-                    reason_template="Opposing pitcher injury may affect this batter prop",
-                    relevance_type="opposing_pitcher_injury",
+                self._build_team_context_matches(
+                    injuries=team_injuries,
+                    expected_role=context_rule["expected_role"],
+                    reason_template=context_rule["reason_template"],
+                    relevance_type=context_rule["relevance_type"],
                     market_key=prop_context.market_key,
-                )
-            )
-        elif market_group == "pitcher":
-            relevant_injuries.extend(
-                self._build_opposing_team_matches(
-                    injuries=opposing_team_injuries,
-                    expected_role="hitter",
-                    reason_template="Opposing lineup weakness may affect this pitcher prop",
-                    relevance_type="opposing_lineup_weakness",
-                    market_key=prop_context.market_key,
+                    market_family=market_family,
+                    team_side=context_rule["team_side"],
                 )
             )
 
@@ -117,10 +191,10 @@ class MLBRelevantInjuryContextService(RelevantInjuryContextInterface):
     def _build_direct_player_matches(
         self,
         injuries: list[MLBPlayerInjuries],
-        market_group: str,
+        market_family: str,
         prop_context: PropInjuryContext,
     ) -> list[RelevantInjuryContext]:
-        expected_role = "hitter" if market_group == "hitter" else "pitcher"
+        expected_role = DIRECT_PLAYER_ROLE_BY_FAMILY[market_family]
         relevance_type = "direct_player_injury"
         reason = f"Prop player has a relevant {expected_role} injury for this market"
 
@@ -129,33 +203,37 @@ class MLBRelevantInjuryContextService(RelevantInjuryContextInterface):
                 injury,
                 relevance_reason=reason,
                 metadata={
-                    "market_group": market_group,
+                    "market_family": market_family,
                     "market_key": prop_context.market_key,
                     "normalized_role": expected_role,
                     "relevance_type": relevance_type,
+                    "context_side": "direct_player",
                 },
             )
             for injury in injuries
             if self._is_relevant_injury(injury, expected_role)
         ]
 
-    def _build_opposing_team_matches(
+    def _build_team_context_matches(
         self,
         injuries: list[MLBPlayerInjuries],
         expected_role: str,
         reason_template: str,
         relevance_type: str,
         market_key: str,
+        market_family: str,
+        team_side: str,
     ) -> list[RelevantInjuryContext]:
         return [
             self._to_relevant_injury_context(
                 injury,
                 relevance_reason=reason_template,
                 metadata={
-                    "market_group": "hitter" if expected_role == "pitcher" else "pitcher",
+                    "market_family": market_family,
                     "market_key": market_key,
                     "normalized_role": expected_role,
                     "relevance_type": relevance_type,
+                    "context_side": team_side,
                 },
             )
             for injury in injuries
@@ -190,12 +268,18 @@ class MLBRelevantInjuryContextService(RelevantInjuryContextInterface):
 
         return None
 
-    def _classify_market(self, market_key: str) -> str | None:
-        if market_key in HITTER_MARKETS:
-            return "hitter"
-        if market_key in PITCHER_MARKETS:
-            return "pitcher"
+    def _get_same_team_id(self, prop_context: PropInjuryContext) -> int | None:
+        return prop_context.player_team_id
+
+    def _get_context_team_id(self, prop_context: PropInjuryContext, team_side: str) -> int | None:
+        if team_side == "opposing":
+            return self._get_opposing_team_id(prop_context)
+        if team_side == "same":
+            return self._get_same_team_id(prop_context)
         return None
+
+    def _classify_market_family(self, market_key: str) -> str | None:
+        return MARKET_FAMILIES.get(market_key)
 
     def _normalize_position(self, position: str | None) -> str:
         if position in PITCHER_POSITIONS:

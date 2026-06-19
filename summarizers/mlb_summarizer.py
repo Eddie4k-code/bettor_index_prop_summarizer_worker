@@ -1,5 +1,7 @@
 import logging
+from datetime import date, datetime
 
+from interfaces.bettor_index_prop_signals_interface import IBettorIndexPropSignalsService
 from interfaces.hit_rates_repository_interface import HitRatesRepositoryInterface
 from interfaces.relevant_injury_context_interface import PropInjuryContext, RelevantInjuryContextInterface
 from interfaces.summarizer_interface import ISummarizerInterface
@@ -13,9 +15,11 @@ class MLBSummarizer(ISummarizerInterface):
         self,
         mlb_hit_rates_repository: HitRatesRepositoryInterface,
         relevant_injury_context_service: RelevantInjuryContextInterface | None = None,
+        bettor_index_prop_signals_service: IBettorIndexPropSignalsService | None = None,
     ):
         self.mlb_hit_rates_repository = mlb_hit_rates_repository
         self.relevant_injury_context_service = relevant_injury_context_service
+        self.bettor_index_prop_signals_service = bettor_index_prop_signals_service
 
     def summarize(self, event_id, market_key, outcome_description):
         hit_rates = self.mlb_hit_rates_repository.get_hit_rates_by_keys(event_id, market_key, outcome_description)
@@ -37,7 +41,7 @@ class MLBSummarizer(ISummarizerInterface):
                 "market_key": market_key,
                 "outcome_description": outcome_description,
                 "event_id": event_id,
-                "commence_time": hit_rates[0].commence_time if hit_rates else None,
+                "commence_time": self._serialize_datetime(hit_rates[0].commence_time) if hit_rates else None,
                 "home_team": hit_rates[0].home_team if hit_rates else None,
                 "away_team": hit_rates[0].away_team if hit_rates else None,
                 "sport_key": hit_rates[0].sport_key if hit_rates else None,
@@ -55,8 +59,21 @@ class MLBSummarizer(ISummarizerInterface):
             market_key,
             outcome_description,
         )
+        summary["bettorindexpropsignals"] = self._build_bettor_index_prop_signals(summary)
 
         return summary
+
+    def _build_bettor_index_prop_signals(self, summary):
+        if not self.bettor_index_prop_signals_service:
+            return {}
+
+        return self.bettor_index_prop_signals_service.build_signal(
+            best_over_line=summary.get("best_over_line"),
+            best_under_line=summary.get("best_under_line"),
+            best_over_price=summary.get("best_over_price"),
+            best_under_price=summary.get("best_under_price"),
+            line_discrepancy_over=summary.get("line_discrepancy", {}).get("over"),
+        )
 
     def _get_relevant_injuries(self, hit_rates, event_id, market_key, outcome_description):
         if not self.relevant_injury_context_service or not hit_rates:
@@ -89,8 +106,8 @@ class MLBSummarizer(ISummarizerInterface):
         return {
             "player_id": relevant_injury.player_id,
             "team_id": relevant_injury.team_id,
-            "date": relevant_injury.date,
-            "return_date": relevant_injury.return_date,
+            "date": self._serialize_datetime(relevant_injury.date),
+            "return_date": self._serialize_datetime(relevant_injury.return_date),
             "display_name": relevant_injury.display_name,
             "position": relevant_injury.position,
             "type": relevant_injury.type,
@@ -102,6 +119,13 @@ class MLBSummarizer(ISummarizerInterface):
             "relevance_reason": relevant_injury.relevance_reason,
             "metadata": relevant_injury.metadata,
         }
+
+    def _serialize_datetime(self, value):
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
+        return value
 
     def find_line_discrepancy(self, hit_rates):
         result = {}

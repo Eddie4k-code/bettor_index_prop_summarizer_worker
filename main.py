@@ -6,7 +6,9 @@ from repositories.mlb_player_injuries_repository import MLBPlayerInjuriesReposit
 from repositories.mlb_summary_repository import MLBSummaryRepository
 from repositories.nba_summary_repository import NBASummaryRepository
 from repositories.nba_hit_rate_repository import NBAHitRatesRepository
+from services.mlb_bettor_index_prop_signals_service import MLBBettorIndexPropSignalsService
 from services.mlb_relevant_injury_context_service import MLBRelevantInjuryContextService
+from services.nba_bettor_index_prop_signals_service import NBABettorIndexPropSignalsService
 from summarizers.mlb_summarizer import MLBSummarizer
 from summarizers.nba_summarizer import NBASummarizer
 from worker.summarizer_worker import SummarizerWorker
@@ -29,9 +31,15 @@ def main():
         nba_hit_rates_repo = NBAHitRatesRepository(db_session)
         mlb_hit_rates_repo = MLBHitRatesRepository(db_session)
         mlb_player_injuries_repo = MLBPlayerInjuriesRepository(db_session)
+        nba_bettor_index_prop_signals_service = NBABettorIndexPropSignalsService()
+        mlb_bettor_index_prop_signals_service = MLBBettorIndexPropSignalsService()
         mlb_relevant_injury_context_service = MLBRelevantInjuryContextService(mlb_player_injuries_repo)
-        nba_summarizer = NBASummarizer(nba_hit_rates_repo)
-        mlb_summarizer = MLBSummarizer(mlb_hit_rates_repo, mlb_relevant_injury_context_service)
+        nba_summarizer = NBASummarizer(nba_hit_rates_repo, nba_bettor_index_prop_signals_service)
+        mlb_summarizer = MLBSummarizer(
+            mlb_hit_rates_repo,
+            mlb_relevant_injury_context_service,
+            mlb_bettor_index_prop_signals_service,
+        )
         worker = SummarizerWorker(
             nba_summarizer=nba_summarizer,
             mlb_summarizer=mlb_summarizer,

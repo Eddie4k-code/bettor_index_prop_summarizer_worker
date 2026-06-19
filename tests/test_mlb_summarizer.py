@@ -41,16 +41,18 @@ class FakeHitRate:
         self.away_team_id = away_team_id
 
 
-def make_summarizer_with_data(hit_rates, relevant_injuries=None):
+def make_summarizer_with_data(hit_rates, relevant_injuries=None, signal_payload=None):
     repo = MagicMock()
     repo.get_hit_rates_by_keys.return_value = hit_rates
     injury_service = MagicMock()
     injury_service.get_relevant_injury_context.return_value = relevant_injuries or []
-    return MLBSummarizer(repo, injury_service), repo, injury_service
+    signal_service = MagicMock()
+    signal_service.build_signal.return_value = signal_payload or {"side": "UNDER", "strength": "strong", "action": "bet_now"}
+    return MLBSummarizer(repo, injury_service, signal_service), repo, injury_service, signal_service
 
 
 def test_summarize_returns_none_when_no_hit_rates():
-    summarizer, repo, _ = make_summarizer_with_data([])
+    summarizer, repo, _, _ = make_summarizer_with_data([])
 
     summary = summarizer.summarize("evt1", "player_hits", "Aaron Judge")
 
@@ -63,7 +65,7 @@ def test_build_summary_success():
         FakeHitRate("over", 1.5, 105, "FanDuel", ten_game_hit_rate=0.7),
         FakeHitRate("under", 2.5, -102, "DraftKings", ten_game_hit_rate=0.6),
     ]
-    summarizer, _, injury_service = make_summarizer_with_data(hit_rates)
+    summarizer, _, injury_service, signal_service = make_summarizer_with_data(hit_rates)
 
     summary = summarizer.build_summary(hit_rates, "evt1", "player_hits", "Aaron Judge")
 
@@ -71,7 +73,7 @@ def test_build_summary_success():
         "market_key": "player_hits",
         "outcome_description": "Aaron Judge",
         "event_id": "evt1",
-        "commence_time": hit_rates[0].commence_time,
+        "commence_time": hit_rates[0].commence_time.isoformat(),
         "home_team": "NYY",
         "away_team": "BOS",
         "sport_key": "baseball_mlb",
@@ -83,7 +85,9 @@ def test_build_summary_success():
     assert "line_discrepancy" in summary
     assert "odds_discrepancy" in summary
     assert summary["relevant_injuries"] == []
+    assert summary["bettorindexpropsignals"]["side"] == "UNDER"
     injury_service.get_relevant_injury_context.assert_called_once()
+    signal_service.build_signal.assert_called_once()
 
 
 def test_build_summary_serializes_relevant_injuries():
@@ -116,14 +120,17 @@ def test_build_summary_serializes_relevant_injuries():
         relevance_reason="Opposing pitcher injury may affect this batter prop",
         metadata={"relevance_type": "opposing_pitcher_injury"},
     )
-    summarizer, _, injury_service = make_summarizer_with_data(hit_rates, [relevant_injury])
+    summarizer, _, injury_service, signal_service = make_summarizer_with_data(hit_rates, [relevant_injury])
 
     summary = summarizer.build_summary(hit_rates, "evt1", "batter_hits", "Aaron Judge")
 
     assert summary["relevant_injuries"][0]["player_id"] == 99
+    assert summary["relevant_injuries"][0]["date"] == relevant_injury.date.isoformat()
+    assert summary["relevant_injuries"][0]["return_date"] is None
     assert summary["relevant_injuries"][0]["position"] == "SP"
     assert summary["relevant_injuries"][0]["metadata"]["relevance_type"] == "opposing_pitcher_injury"
     injury_service.get_relevant_injury_context.assert_called_once()
+    signal_service.build_signal.assert_called_once()
 
 
 def test_line_discrepancy_found():
@@ -131,7 +138,7 @@ def test_line_discrepancy_found():
         FakeHitRate("over", 1.5, 105, "FanDuel"),
         FakeHitRate("over", 2.5, 110, "DraftKings"),
     ]
-    summarizer, _, _ = make_summarizer_with_data(hit_rates)
+    summarizer, _, _, _ = make_summarizer_with_data(hit_rates)
 
     result = summarizer.find_line_discrepancy(hit_rates)
 
@@ -145,7 +152,7 @@ def test_odds_discrepancy_found():
         FakeHitRate("under", 1.5, -120, "FanDuel"),
         FakeHitRate("under", 1.5, 105, "DraftKings"),
     ]
-    summarizer, _, _ = make_summarizer_with_data(hit_rates)
+    summarizer, _, _, _ = make_summarizer_with_data(hit_rates)
 
     result = summarizer.find_odds_discrepancy(hit_rates)
 
@@ -159,7 +166,7 @@ def test_best_over_line():
         FakeHitRate("over", 1.5, 100, "FanDuel"),
         FakeHitRate("over", 0.5, 105, "DraftKings"),
     ]
-    summarizer, _, _ = make_summarizer_with_data(hit_rates)
+    summarizer, _, _, _ = make_summarizer_with_data(hit_rates)
 
     best = summarizer.identify_best_over_line(hit_rates)
 
@@ -172,7 +179,7 @@ def test_best_under_line():
         FakeHitRate("under", 1.5, 100, "FanDuel"),
         FakeHitRate("under", 2.5, 105, "DraftKings"),
     ]
-    summarizer, _, _ = make_summarizer_with_data(hit_rates)
+    summarizer, _, _, _ = make_summarizer_with_data(hit_rates)
 
     best = summarizer.identify_best_under_line(hit_rates)
 
@@ -185,7 +192,7 @@ def test_best_over_price():
         FakeHitRate("over", 1.5, -105, "FanDuel"),
         FakeHitRate("over", 1.5, 110, "DraftKings"),
     ]
-    summarizer, _, _ = make_summarizer_with_data(hit_rates)
+    summarizer, _, _, _ = make_summarizer_with_data(hit_rates)
 
     best = summarizer.identify_best_over_price(hit_rates)
 
@@ -198,7 +205,7 @@ def test_best_under_price():
         FakeHitRate("under", 1.5, -110, "FanDuel"),
         FakeHitRate("under", 1.5, 115, "DraftKings"),
     ]
-    summarizer, _, _ = make_summarizer_with_data(hit_rates)
+    summarizer, _, _, _ = make_summarizer_with_data(hit_rates)
 
     best = summarizer.identify_best_under_price(hit_rates)
 
