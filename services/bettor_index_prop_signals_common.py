@@ -115,7 +115,7 @@ def get_strength(recent_edge_abs: float, selected_value_edge: float | None) -> s
 
 
 def get_action(
-    side: str,
+    side: str,   
     strength: str,
     market_state: str,
     selected_value_edge: float | None,

@@ -4,6 +4,7 @@ import logging
 from interfaces.bettor_index_prop_signals_interface import IBettorIndexPropSignalsService
 from interfaces.hit_rates_repository_interface import HitRatesRepositoryInterface
 from interfaces.summarizer_interface import ISummarizerInterface
+from interfaces.venue_last_five_clears_interface import IVenueLastFiveClearsService, VenueLastFiveClearsRequest
 
 
 logger = logging.getLogger(__name__)
@@ -13,9 +14,11 @@ class NBASummarizer(ISummarizerInterface):
         self,
         nba_hit_rates_repository: HitRatesRepositoryInterface,
         bettor_index_prop_signals_service: IBettorIndexPropSignalsService | None = None,
+        venue_last_five_clears_service: IVenueLastFiveClearsService | None = None,
     ):
         self.nba_hit_rates_repository = nba_hit_rates_repository
         self.bettor_index_prop_signals_service = bettor_index_prop_signals_service
+        self.venue_last_five_clears_service = venue_last_five_clears_service
 
     def summarize(self, event_id, market_key, outcome_description) -> str:
         
@@ -53,6 +56,13 @@ class NBASummarizer(ISummarizerInterface):
         summary["line_discrepancy"] = self.find_line_discrepancy(hit_rates)
         # Add odds discrepancy
         summary["odds_discrepancy"] = self.find_odds_discrepancy(hit_rates)
+        summary["venue_last_five_clears"] = self._build_venue_last_five_clears(
+            hit_rates,
+            market_key,
+            outcome_description,
+            summary.get("best_over_line"),
+            summary.get("best_under_line"),
+        )
         summary["bettorindexpropsignals"] = self._build_bettor_index_prop_signals(summary)
 
         return summary
@@ -68,6 +78,33 @@ class NBASummarizer(ISummarizerInterface):
             best_under_price=summary.get("best_under_price"),
             line_discrepancy_over=summary.get("line_discrepancy", {}).get("over"),
         )
+
+    def _build_venue_last_five_clears(
+        self,
+        hit_rates,
+        market_key,
+        outcome_description,
+        best_over_line,
+        best_under_line,
+    ):
+        if not self.venue_last_five_clears_service or not hit_rates:
+            return None
+
+        first_hit_rate = hit_rates[0]
+        request = VenueLastFiveClearsRequest(
+            sport_key=first_hit_rate.sport_key,
+            player_id=getattr(first_hit_rate, "player_id", None),
+            market_key=market_key,
+            outcome_description=outcome_description,
+            selected_over_line=best_over_line.get("outcome_line") if best_over_line else None,
+            selected_under_line=best_under_line.get("outcome_line") if best_under_line else None,
+            player_team_id=getattr(first_hit_rate, "player_team_id", None),
+            home_team_id=getattr(first_hit_rate, "home_team_id", None),
+            away_team_id=getattr(first_hit_rate, "away_team_id", None),
+        )
+        payload = self.venue_last_five_clears_service.build(request)
+
+        return payload.to_dict() if payload else None
 
     def _serialize_datetime(self, value):
         if isinstance(value, datetime):

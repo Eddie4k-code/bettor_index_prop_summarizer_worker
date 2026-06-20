@@ -14,8 +14,8 @@ def test_summarizer_worker_processes_events(mocker):
         FakeEvent("evt2", "player_hits", "Aaron Judge", "baseball_mlb"),
     ]
     fake_summaries = [
-        {"market": {"event_id": "evt1", "market_key": "points", "outcome_description": "over", "commence_time": None, "home_team": "A", "away_team": "B", "sport_key": "basketball_nba"}, "bettorindexpropsignals": {"side": "OVER", "lean_label": "Lean Over", "market_label": "Worth Watching"}},
-        {"market": {"event_id": "evt2", "market_key": "player_hits", "outcome_description": "Aaron Judge", "commence_time": None, "home_team": "A", "away_team": "B", "sport_key": "baseball_mlb"}, "bettorindexpropsignals": {"side": "UNDER", "lean_label": "Strong Lean Under", "market_label": "Opportunity"}}
+        {"market": {"event_id": "evt1", "market_key": "points", "outcome_description": "over", "commence_time": None, "home_team": "A", "away_team": "B", "sport_key": "basketball_nba"}, "venue_last_five_clears": None, "bettorindexpropsignals": {"side": "OVER", "lean_label": "Lean Over", "market_label": "Worth Watching"}},
+        {"market": {"event_id": "evt2", "market_key": "player_hits", "outcome_description": "Aaron Judge", "commence_time": None, "home_team": "A", "away_team": "B", "sport_key": "baseball_mlb"}, "venue_last_five_clears": {"venue": "home", "sample_size": 0, "window_size": 5, "over": {"line": 1.5, "cleared_count": 0}, "under": {"line": 2.5, "cleared_count": 0}}, "bettorindexpropsignals": {"side": "UNDER", "lean_label": "Strong Lean Under", "market_label": "Opportunity"}}
     ]
 
     mock_queue_repo = mocker.Mock()
@@ -50,6 +50,7 @@ def test_summarizer_worker_processes_events(mocker):
     assert mock_mlb_summary_repo.insert_summary.call_args[0][0].summary_data["bettorindexpropsignals"]["side"] == "UNDER"
     assert mock_nba_summary_repo.insert_summary.call_args[0][0].summary_data["bettorindexpropsignals"]["market_label"] == "Worth Watching"
     assert mock_mlb_summary_repo.insert_summary.call_args[0][0].summary_data["bettorindexpropsignals"]["lean_label"] == "Strong Lean Under"
+    assert mock_mlb_summary_repo.insert_summary.call_args[0][0].summary_data["venue_last_five_clears"]["sample_size"] == 0
     mock_summarizer.summarize.assert_called_once_with("evt1", "points", "over")
     mock_mlb_summarizer.summarize.assert_called_once_with("evt2", "player_hits", "Aaron Judge")
 
