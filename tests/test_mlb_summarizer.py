@@ -1,8 +1,10 @@
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from interfaces.relevant_injury_context_interface import RelevantInjuryContext
 from interfaces.venue_last_five_clears_interface import VenueLastFiveClears, VenueLastFiveClearsSide
+from services.mlb_venue_last_five_clears_service import MLBVenueLastFiveClearsService
 from summarizers.mlb_summarizer import MLBSummarizer
 
 
@@ -255,3 +257,44 @@ def test_build_summary_serializes_venue_last_five_clears():
     assert request.market_key == "player_hits"
     assert request.selected_over_line == 1.5
     assert request.selected_under_line == 2.5
+
+
+def test_build_summary_computes_venue_last_five_clears_with_real_service():
+    hit_rates = [
+        FakeHitRate("over", 1.5, 105, "FanDuel", player_id=77, player_team_id=10, home_team_id=10, away_team_id=20),
+        FakeHitRate("under", 2.5, -102, "DraftKings", player_id=77, player_team_id=10, home_team_id=10, away_team_id=20),
+    ]
+    repo = MagicMock()
+    repo.get_hit_rates_by_keys.return_value = hit_rates
+    injury_service = MagicMock()
+    injury_service.get_relevant_injury_context.return_value = []
+    signal_service = MagicMock()
+    signal_service.build_signal.return_value = {}
+    player_stats_repository = MagicMock()
+    player_stats_repository.get_recent_player_stats.return_value = [
+        {"game_id": 4, "team_name": "Yankees", "hits": 3},
+        {"game_id": 3, "team_name": "Yankees", "hits": 1},
+        {"game_id": 2, "team_name": "Yankees", "hits": 2},
+        {"game_id": 1, "team_name": "Yankees", "hits": 0},
+    ]
+    game_repository = MagicMock()
+    game_repository.get_games_by_ids.return_value = {
+        4: SimpleNamespace(home_team="Yankees", away_team="Red Sox"),
+        3: SimpleNamespace(home_team="Blue Jays", away_team="Yankees"),
+        2: SimpleNamespace(home_team="Yankees", away_team="Orioles"),
+        1: SimpleNamespace(home_team="Yankees", away_team="Rays"),
+    }
+    venue_service = MLBVenueLastFiveClearsService(player_stats_repository, game_repository)
+    summarizer = MLBSummarizer(repo, injury_service, signal_service, venue_service)
+
+    summary = summarizer.build_summary(hit_rates, "evt1", "player_hits", "Aaron Judge")
+
+    assert summary["venue_last_five_clears"] == {
+        "venue": "home",
+        "sample_size": 3,
+        "window_size": 5,
+        "over": {"line": 1.5, "cleared_count": 2},
+        "under": {"line": 2.5, "cleared_count": 2},
+    }
+    player_stats_repository.get_recent_player_stats.assert_called_once_with(77, 50)
+    game_repository.get_games_by_ids.assert_called_once_with([4, 3, 2, 1], "baseball_mlb")

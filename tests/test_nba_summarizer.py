@@ -2,8 +2,10 @@ import pytest
 from summarizers.nba_summarizer import NBASummarizer
 from unittest.mock import MagicMock
 from datetime import datetime
+from types import SimpleNamespace
 
 from interfaces.venue_last_five_clears_interface import VenueLastFiveClears, VenueLastFiveClearsSide
+from services.nba_venue_last_five_clears_service import NBAVenueLastFiveClearsService
 
 
 class FakeHitRate:
@@ -164,6 +166,45 @@ def test_build_summary_serializes_venue_last_five_clears():
     assert request.market_key == "player_points"
     assert request.selected_over_line == 12.5
     assert request.selected_under_line == 14.5
+
+
+def test_build_summary_computes_venue_last_five_clears_with_real_service():
+    hit_rates = [
+        FakeHitRate("over", 12.5, 105, "FanDuel", sport_key="basketball_nba", player_id=23, player_team_id=14, home_team_id=14, away_team_id=2),
+        FakeHitRate("under", 14.5, -102, "DraftKings", sport_key="basketball_nba", player_id=23, player_team_id=14, home_team_id=14, away_team_id=2),
+    ]
+    repo = MagicMock()
+    repo.get_hit_rates_by_keys.return_value = hit_rates
+    signal_service = MagicMock()
+    signal_service.build_signal.return_value = {}
+    player_stats_repository = MagicMock()
+    player_stats_repository.get_recent_player_stats.return_value = [
+        {"game_id": 14, "team_id": 14, "points": 30},
+        {"game_id": 13, "team_id": 14, "points": 18},
+        {"game_id": 12, "team_id": 14, "points": 27},
+        {"game_id": 11, "team_id": 14, "points": 21},
+    ]
+    game_repository = MagicMock()
+    game_repository.get_games_by_ids.return_value = {
+        14: SimpleNamespace(home_team_id=14, away_team_id=2),
+        13: SimpleNamespace(home_team_id=2, away_team_id=14),
+        12: SimpleNamespace(home_team_id=14, away_team_id=6),
+        11: SimpleNamespace(home_team_id=14, away_team_id=8),
+    }
+    venue_service = NBAVenueLastFiveClearsService(player_stats_repository, game_repository)
+    summarizer = NBASummarizer(repo, signal_service, venue_service)
+
+    summary = summarizer.build_summary(hit_rates, 1, "player_points", "Over/Under")
+
+    assert summary["venue_last_five_clears"] == {
+        "venue": "home",
+        "sample_size": 3,
+        "window_size": 5,
+        "over": {"line": 12.5, "cleared_count": 3},
+        "under": {"line": 14.5, "cleared_count": 0},
+    }
+    player_stats_repository.get_recent_player_stats.assert_called_once_with(23, 50)
+    game_repository.get_games_by_ids.assert_called_once_with([14, 13, 12, 11], "basketball_nba")
 
 def test_no_odds_discrepancy():
     hit_rates = [
