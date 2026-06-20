@@ -16,3 +16,15 @@ class GameRepository(GameRepositoryInterface):
             .filter(Game.id == game_id, Game.sport_key == sport_key)
             .first()
         )
+
+    def get_games_by_ids(self, game_ids: list[int], sport_key: str) -> dict[int, Game]:
+        if not game_ids:
+            return {}
+
+        games = (
+            self.db_session.query(Game)
+            .filter(Game.id.in_(game_ids), Game.sport_key == sport_key)
+            .all()
+        )
+
+        return {game.id: game for game in games}
