@@ -3,8 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from interfaces.relevant_injury_context_interface import RelevantInjuryContext
-from interfaces.venue_last_five_clears_interface import VenueLastFiveClears, VenueLastFiveClearsSide
-from services.mlb_venue_last_five_clears_service import MLBVenueLastFiveClearsService
+from interfaces.home_away_last_n_clears import HomeAwayLastNClearsResult, Over, Under
+from services.MLBHomeAwayLastNClears import MLBHomeAwayLastNClearsService
 from summarizers.mlb_summarizer import MLBSummarizer
 
 
@@ -58,9 +58,9 @@ def make_summarizer_with_data(hit_rates, relevant_injuries=None, signal_payload=
         "market_label": "Opportunity",
         "reason_text": "Backend sees a strong under trend with positive edge at the current best price.",
     }
-    venue_service = MagicMock()
-    venue_service.build.return_value = None
-    return MLBSummarizer(repo, injury_service, signal_service, venue_service), repo, injury_service, signal_service, venue_service
+    home_away_service = MagicMock()
+    home_away_service.get_last_n_clears.return_value = None
+    return MLBSummarizer(repo, injury_service, signal_service, home_away_service), repo, injury_service, signal_service, home_away_service
 
 
 def test_summarize_returns_none_when_no_hit_rates():
@@ -77,7 +77,7 @@ def test_build_summary_success():
         FakeHitRate("over", 1.5, 105, "FanDuel", ten_game_hit_rate=0.7),
         FakeHitRate("under", 2.5, -102, "DraftKings", ten_game_hit_rate=0.6),
     ]
-    summarizer, _, injury_service, signal_service, venue_service = make_summarizer_with_data(hit_rates)
+    summarizer, _, injury_service, signal_service, home_away_service = make_summarizer_with_data(hit_rates)
 
     summary = summarizer.build_summary(hit_rates, "evt1", "player_hits", "Aaron Judge")
 
@@ -96,14 +96,14 @@ def test_build_summary_success():
     assert "best_under_price" in summary
     assert "line_discrepancy" in summary
     assert "odds_discrepancy" in summary
-    assert summary["venue_last_five_clears"] is None
+    assert summary["home_away_last_n_clears"] is None
     assert summary["relevant_injuries"] == []
     assert summary["bettorindexpropsignals"]["side"] == "UNDER"
     assert summary["bettorindexpropsignals"]["lean_label"] == "Strong Lean Under"
     assert summary["bettorindexpropsignals"]["market_label"] == "Opportunity"
     injury_service.get_relevant_injury_context.assert_called_once()
     signal_service.build_signal.assert_called_once()
-    venue_service.build.assert_called_once()
+    home_away_service.get_last_n_clears.assert_called_once()
 
 
 def test_build_summary_serializes_relevant_injuries():
@@ -229,37 +229,47 @@ def test_best_under_price():
     assert best["bookmaker"] == "DraftKings"
 
 
-def test_build_summary_serializes_venue_last_five_clears():
+def test_build_summary_serializes_home_away_last_n_clears():
     hit_rates = [
         FakeHitRate("over", 1.5, 105, "FanDuel", ten_game_hit_rate=0.7, player_team_id=10, home_team_id=10, away_team_id=20),
         FakeHitRate("under", 2.5, -102, "DraftKings", ten_game_hit_rate=0.6, player_team_id=10, home_team_id=10, away_team_id=20),
     ]
-    summarizer, _, _, _, venue_service = make_summarizer_with_data(hit_rates)
-    venue_service.build.return_value = VenueLastFiveClears(
-        venue="home",
-        sample_size=4,
-        window_size=5,
-        over=VenueLastFiveClearsSide(line=1.5, cleared_count=3),
-        under=VenueLastFiveClearsSide(line=2.5, cleared_count=1),
+    summarizer, _, _, _, home_away_service = make_summarizer_with_data(hit_rates)
+    home_away_service.get_last_n_clears.return_value = HomeAwayLastNClearsResult(
+        home={
+            "over": Over(line=1.5, sample_window=5, cleared_count=3),
+            "under": Under(line=2.5, sample_window=5, cleared_count=1),
+        },
+        away={
+            "over": Over(line=1.5, sample_window=5, cleared_count=2),
+            "under": Under(line=2.5, sample_window=5, cleared_count=4),
+        },
     )
 
-    summary = summarizer.build_summary(hit_rates, "evt1", "player_hits", "Aaron Judge")
+    summary = summarizer.build_summary(hit_rates, "evt1", "batter_hits", "Aaron Judge")
 
-    assert summary["venue_last_five_clears"] == {
-        "venue": "home",
-        "sample_size": 4,
-        "window_size": 5,
-        "over": {"line": 1.5, "cleared_count": 3},
-        "under": {"line": 2.5, "cleared_count": 1},
+    assert summary["home_away_last_n_clears"] == {
+        "home": {
+            "over": {"line": 1.5, "sample_window": 5, "cleared_count": 3},
+            "under": {"line": 2.5, "sample_window": 5, "cleared_count": 1},
+        },
+        "away": {
+            "over": {"line": 1.5, "sample_window": 5, "cleared_count": 2},
+            "under": {"line": 2.5, "sample_window": 5, "cleared_count": 4},
+        },
     }
-    request = venue_service.build.call_args.args[0]
-    assert request.sport_key == "baseball_mlb"
-    assert request.market_key == "player_hits"
-    assert request.selected_over_line == 1.5
-    assert request.selected_under_line == 2.5
+    home_away_service.get_last_n_clears.assert_called_once_with(
+        player_id=123,
+        home_team_id=10,
+        away_team_id=20,
+        player_team_id=10,
+        window=5,
+        line=1.5,
+        market="batter_hits",
+    )
 
 
-def test_build_summary_computes_venue_last_five_clears_with_real_service():
+def test_build_summary_computes_home_away_last_n_clears_with_real_service():
     hit_rates = [
         FakeHitRate("over", 1.5, 105, "FanDuel", player_id=77, player_team_id=10, home_team_id=10, away_team_id=20),
         FakeHitRate("under", 2.5, -102, "DraftKings", player_id=77, player_team_id=10, home_team_id=10, away_team_id=20),
@@ -270,31 +280,34 @@ def test_build_summary_computes_venue_last_five_clears_with_real_service():
     injury_service.get_relevant_injury_context.return_value = []
     signal_service = MagicMock()
     signal_service.build_signal.return_value = {}
-    player_stats_repository = MagicMock()
-    player_stats_repository.get_recent_player_stats.return_value = [
-        {"game_id": 4, "team_name": "Yankees", "hits": 3},
-        {"game_id": 3, "team_name": "Yankees", "hits": 1},
-        {"game_id": 2, "team_name": "Yankees", "hits": 2},
-        {"game_id": 1, "team_name": "Yankees", "hits": 0},
+    player_stats = [
+        SimpleNamespace(game_id=4, hits=3),
+        SimpleNamespace(game_id=3, hits=1),
+        SimpleNamespace(game_id=2, hits=2),
+        SimpleNamespace(game_id=1, hits=0),
     ]
+    player_stats_repository = MagicMock()
+    player_stats_repository.get_recent_player_stats.return_value = player_stats
     game_repository = MagicMock()
-    game_repository.get_games_by_ids.return_value = {
-        4: SimpleNamespace(home_team="Yankees", away_team="Red Sox"),
-        3: SimpleNamespace(home_team="Blue Jays", away_team="Yankees"),
-        2: SimpleNamespace(home_team="Yankees", away_team="Orioles"),
-        1: SimpleNamespace(home_team="Yankees", away_team="Rays"),
-    }
-    venue_service = MLBVenueLastFiveClearsService(player_stats_repository, game_repository)
-    summarizer = MLBSummarizer(repo, injury_service, signal_service, venue_service)
+    game_repository.get_game_by_id.side_effect = lambda game_id, sport_key: {
+        4: SimpleNamespace(home_team_id=10, away_team_id=20),
+        3: SimpleNamespace(home_team_id=30, away_team_id=10),
+        2: SimpleNamespace(home_team_id=10, away_team_id=40),
+        1: SimpleNamespace(home_team_id=10, away_team_id=50),
+    }[game_id]
+    home_away_service = MLBHomeAwayLastNClearsService(player_stats_repository, game_repository)
+    summarizer = MLBSummarizer(repo, injury_service, signal_service, home_away_service)
 
-    summary = summarizer.build_summary(hit_rates, "evt1", "player_hits", "Aaron Judge")
+    summary = summarizer.build_summary(hit_rates, "evt1", "batter_hits", "Aaron Judge")
 
-    assert summary["venue_last_five_clears"] == {
-        "venue": "home",
-        "sample_size": 3,
-        "window_size": 5,
-        "over": {"line": 1.5, "cleared_count": 2},
-        "under": {"line": 2.5, "cleared_count": 2},
+    assert summary["home_away_last_n_clears"] == {
+        "home": {
+            "over": {"line": 1.5, "sample_window": 3, "cleared_count": 2},
+            "under": {"line": 1.5, "sample_window": 3, "cleared_count": 1},
+        },
+        "away": {
+            "over": {"line": 1.5, "sample_window": 1, "cleared_count": 0},
+            "under": {"line": 1.5, "sample_window": 1, "cleared_count": 1},
+        },
     }
-    player_stats_repository.get_recent_player_stats.assert_called_once_with(77, 50)
-    game_repository.get_games_by_ids.assert_called_once_with([4, 3, 2, 1], "baseball_mlb")
+    player_stats_repository.get_recent_player_stats.assert_called_once_with(77, 25)

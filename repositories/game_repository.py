@@ -28,3 +28,4 @@ class GameRepository(GameRepositoryInterface):
         )
 
         return {game.id: game for game in games}
+

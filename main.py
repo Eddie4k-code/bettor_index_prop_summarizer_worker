@@ -20,6 +20,7 @@ from worker.summarizer_worker import SummarizerWorker
 from db.models.base import Base
 from db.db import engine
 import logging
+from services.MLBHomeAwayLastNClears import MLBHomeAwayLastNClearsService
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def main():
         nba_bettor_index_prop_signals_service = NBABettorIndexPropSignalsService()
         mlb_bettor_index_prop_signals_service = MLBBettorIndexPropSignalsService()
         nba_venue_last_five_clears_service = NBAVenueLastFiveClearsService(nba_player_stats_repo, game_repo)
-        mlb_venue_last_five_clears_service = MLBVenueLastFiveClearsService(mlb_player_stats_repo, game_repo)
+        mlb_home_away_last_n_clears_service = MLBHomeAwayLastNClearsService(mlb_player_stats_repo, game_repo)
         mlb_relevant_injury_context_service = MLBRelevantInjuryContextService(mlb_player_injuries_repo)
         nba_summarizer = NBASummarizer(
             nba_hit_rates_repo,
@@ -53,7 +54,7 @@ def main():
             mlb_hit_rates_repo,
             mlb_relevant_injury_context_service,
             mlb_bettor_index_prop_signals_service,
-            mlb_venue_last_five_clears_service,
+            mlb_home_away_last_n_clears_service,
         )
         worker = SummarizerWorker(
             nba_summarizer=nba_summarizer,
